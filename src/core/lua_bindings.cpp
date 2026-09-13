@@ -319,9 +319,8 @@ static int l_draw_rect(lua_State* L) {
     int y = luaL_checkinteger(L, 2);
     int w = luaL_checkinteger(L, 3);
     int h = luaL_checkinteger(L, 4);
-    M5Cardputer.Display.fillRect(x, y, w, h, g_draw_color);
-
-    return 0;
+    M5Cardputer.Display.drawRect(x, y, w, h, g_draw_color);
+    return 1;
 }
 
 static int l_draw_line(lua_State* L) {
@@ -341,6 +340,7 @@ static int l_draw_triangle(lua_State* L) {
     int x2 = luaL_checkinteger(L, 5);
     int y2 = luaL_checkinteger(L, 6);
     M5Cardputer.Display.drawTriangle(x0,y0,x1,y1,x2,y2,  g_draw_color);
+    return 1;
 }
 
 static int l_draw_triangle_full(lua_State* L) {
@@ -351,6 +351,7 @@ static int l_draw_triangle_full(lua_State* L) {
     int x2 = luaL_checkinteger(L, 5);
     int y2 = luaL_checkinteger(L, 6);
     M5Cardputer.Display.fillTriangle(x0,y0,x1,y1,x2,y2,  g_draw_color);
+    return 1;
 }
 
 static int l_draw_circle(lua_State* L) {
@@ -358,6 +359,7 @@ static int l_draw_circle(lua_State* L) {
     int y = luaL_checkinteger(L, 2);
     int r = luaL_checkinteger(L, 3);
     M5Cardputer.Display.drawCircle(x,y,r, g_draw_color);
+    return 1;
 }
 
 static int l_draw_circle_full(lua_State* L) {
@@ -365,6 +367,7 @@ static int l_draw_circle_full(lua_State* L) {
     int y = luaL_checkinteger(L, 2);
     int r = luaL_checkinteger(L, 3);
     M5Cardputer.Display.fillCircle(x,y,r, g_draw_color);
+    return 1;
 }
 
 static int l_file_browser_start(lua_State* L) {
@@ -397,7 +400,7 @@ void register_ui_bindings(lua_State* L) {
     lua_register(L, "draw_status_bar", l_draw_status_bar);
     lua_register(L, "draw_text", l_draw_text);
     lua_register(L, "clear_screen", l_clear_screen);
-    lua_register(L, "draw_rectF", l_draw_rect_full);
+    lua_register(L, "draw_rect_full", l_draw_rect_full);
     lua_register(L, "set_color", l_set_color);
     lua_register(L, "draw_rect", l_draw_rect);
     lua_register(L, "draw_line", l_draw_line);
