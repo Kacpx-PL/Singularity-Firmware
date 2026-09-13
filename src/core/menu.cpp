@@ -16,8 +16,6 @@
 static std::vector<std::string> path_stack = { SG_APPS_DIR };
 static std::vector<App> apps;
 
-static const char* hello_script = "print_screen('Hello from Lua app!')";
-
 // Stack of folder paths, so ESC/back can pop up one level.
 // Starts at root "/singularity/apps".
 
@@ -71,7 +69,6 @@ static void rebuild_menu() {
 
     if (path_stack.size() == 1) {
         // only show core apps at the true root
-        apps.push_back(make_lua_app("Lua Test", hello_script, &icon_code));
         apps.push_back(make_lua_app("WiFi", script_wifi, &icon_wifi));
         apps.push_back(make_lua_app("Config", script_config, &icon_cog));
     }

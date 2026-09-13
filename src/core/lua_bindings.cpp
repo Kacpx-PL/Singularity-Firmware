@@ -15,7 +15,7 @@ extern "C" {
 }
 
 //default draw color
-static uint32_t g_draw_color = 0xFFFFFF;
+static uint16_t g_draw_color = 0xFFFF;
 
 // Hardware bindings
 
@@ -120,6 +120,11 @@ static int l_serial_print(lua_State* L) {
     return 0;
 }
 
+static int l_millis(lua_State* L) {
+    lua_pushinteger(L, (lua_Integer)millis());
+    return 1;
+}
+
 void register_hardware_bindings(lua_State* L) {
     lua_register(L, "config_set_theme_color", l_config_set_theme_color);
     lua_register(L, "config_set_boot_delay", l_config_set_boot_delay);
@@ -130,6 +135,7 @@ void register_hardware_bindings(lua_State* L) {
     lua_register(L, "ir_receive_get_result", l_ir_receive_get_result);
     lua_register(L, "ir_receive_resume",l_ir_receive_resume);
     lua_register(L, "serial_print",l_serial_print);
+    lua_register(L, "millis", l_millis);
     lua_register(L, "ir_receive_get_address", l_ir_receive_get_address);
     lua_register(L, "ir_receive_get_command", l_ir_receive_get_command);
     lua_register(L, "ir_receive_get_protocol", l_ir_receive_get_protocol);

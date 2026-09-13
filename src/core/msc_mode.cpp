@@ -76,7 +76,7 @@ void enter_msc_mode() {
 
     should_stop = false;
 
-    msc.vendorID("Singularity");
+    msc.vendorID("SG0MSC");
     msc.productID("SD Card");
     msc.productRevision("1.0");
     msc.onRead(onRead);

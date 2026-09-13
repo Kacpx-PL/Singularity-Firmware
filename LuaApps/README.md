@@ -158,5 +158,6 @@ config_set_boot_delay(3000)      -- clamped to 1000–10000ms internally
 ### Misc
 
 ```lua
+millis(ms)                      -- waits a set amount of ms (warning blocking (pauses whole systme))
 serial_print("debug message")   -- prints to the USB serial console
 ```

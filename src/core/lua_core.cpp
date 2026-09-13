@@ -13,7 +13,7 @@ extern "C" {
 
 static lua_State* L;
 
-// This is the C function Lua scripts will call as "print_screen(x)"
+
 static int l_print_screen(lua_State* L) {
     const char* text = luaL_checkstring(L, 1);
 
@@ -23,7 +23,7 @@ static int l_print_screen(lua_State* L) {
     M5Cardputer.Display.setCursor(10, 40);
     M5Cardputer.Display.print(text);
 
-    return 0; // number of return values pushed back to Lua
+    return 0;
 }
 
 static void show_lua_error(const char* err) {
@@ -37,7 +37,7 @@ static void show_lua_error(const char* err) {
 
 void lua_core_init() {
     L = luaL_newstate();
-    luaL_openlibs(L); // for now, open everything — we'll trim later once this works
+    luaL_openlibs(L); // for now, open everything
 
     lua_register(L, "print_screen", l_print_screen);
     register_wifi_bindings(L);
@@ -135,23 +135,6 @@ static int l_storage_read(lua_State* L) {
     return 1;
 }
 
-/*static int l_storage_read(lua_State* L) {
-    const char* path = luaL_checkstring(L, 1);
-    char* buf = (char*)malloc(512);
-    if (!buf) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    if (storage_read(path, buf, 512)) {
-        lua_pushstring(L, buf);
-    } else {
-        lua_pushnil(L);
-    }
-    free(buf);
-    return 1;
-}*/
-
 static int l_storage_write(lua_State* L) {
     const char* path = luaL_checkstring(L, 1);
     const char* data = luaL_checkstring(L, 2);
@@ -177,17 +160,14 @@ LuaManifest lua_core_load_manifest(const char* script) {
 
     // Clear the stack before loading new manifest
     lua_settop(L, 0);
-    //Serial.println("[lua_core_load_manifest] Starting...");
 
     if (luaL_loadstring(L, script) != LUA_OK) {
-        //Serial.println(lua_tostring(L, -1));
         lua_pop(L, 1);
         lua_settop(L, 0);
         return m;
     }
 
     if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
-        //Serial.println(lua_tostring(L, -1));
         lua_pop(L, 1);
         lua_settop(L, 0);
         return m;
@@ -206,8 +186,6 @@ LuaManifest lua_core_load_manifest(const char* script) {
     lua_getfield(L, -1, "name");
     if (lua_isstring(L, -1)) {
         m.name = lua_tostring(L, -1);
-        //Serial.print("[lua_core_load_manifest] name = ");
-        //Serial.println(m.name.c_str());
     }
     lua_pop(L, 1);
 
@@ -223,12 +201,6 @@ LuaManifest lua_core_load_manifest(const char* script) {
     lua_settop(L, 0); // completely clear stack
 
     m.valid = true;
-    //Serial.print("[lua_core_load_manifest] Done. Valid=");
-    //Serial.print(m.valid);
-    //Serial.print(", Type=");
-    //Serial.print(m.type.c_str());
-    //Serial.print(", Name=");
-    //Serial.println(m.name.c_str());
     return m;
 }
 
