@@ -1,3 +1,10 @@
+-- Ensure default config file exists
+local CONFIG_PATH = "/singularity/system/config.lua"
+if not storage_exists(CONFIG_PATH) then
+    local default_config = "return {\n    theme_color = 2016,\n    boot_delay_ms = 3000,\n}\n"
+    storage_write(CONFIG_PATH, default_config)
+end
+
 local mode = "list"
 local SG_BOOT_DELAY_MIN = 1000  --setting this below 1000 will not change anything.
 local SG_BOOT_DELAY_MAX = 10000 --setting this above 10000 will not change anything.

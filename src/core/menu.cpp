@@ -27,6 +27,12 @@ static bool needs_redraw = true;
 static unsigned long last_status_refresh = 0;
 
 static void scan_sd_apps(const char* base_path) {
+    // Check if directory exists first
+    if (!storage_exists(base_path)) {
+        Serial.printf("[MENU] Directory not found: %s\n", base_path);
+        return;
+    }
+
     auto dirs = storage_list_dirs(base_path);
 
     for (auto& dirname : dirs) {

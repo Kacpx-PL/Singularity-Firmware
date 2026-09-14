@@ -1,3 +1,10 @@
+-- Ensure default wifi config file exists
+local WIFI_CONFIG_PATH = "/singularity/system/wifi_networks.lua"
+if not storage_exists(WIFI_CONFIG_PATH) then
+    local default_wifi_config = "return {\n    autoconnect = false,\n    networks = {},\n}\n"
+    storage_write(WIFI_CONFIG_PATH, default_wifi_config)
+end
+
 local mode = "list"
 local pending_ssid = ""
 
@@ -18,7 +25,8 @@ list_draw()
 function on_key(key)
     if mode == "list" then
         local result = list_handle_key(key)
-        draw_rectF(0,20,240,47)
+        --draw_rectF(0,20,240,47)
+        clear_screen()
         draw_text("WiFi Menu", 10, 40, 2)
         list_draw()
 

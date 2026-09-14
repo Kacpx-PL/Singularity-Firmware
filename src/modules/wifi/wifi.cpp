@@ -109,7 +109,9 @@ static void save_wifi_config() {
     out += autoconnect_enabled ? "true" : "false";
     out += ",\n    networks = {\n";
     for (auto& n : known_networks) {
-        out += "        { ssid = \"" + n.ssid + "\", password = \"" + n.password + "\" },\n";
+        std::string safe_ssid = storage_escape_lua_string(n.ssid);
+        std::string safe_password = storage_escape_lua_string(n.password);
+        out += "        { ssid = \"" + safe_ssid + "\", password = \"" + safe_password + "\" },\n";
     }
     out += "    }\n}\n";
     storage_write(SG_SYSTEM_DIR "/wifi_networks.lua", out.c_str());

@@ -19,17 +19,21 @@ void setup() {
     bool sd_ok = storage_init();
     if (!sd_ok) {
         Serial.println("SD card init failed — continuing without SD");
+    } else {
+        // Wait for SD filesystem to be ready before attempting to access it
+        if (!storage_wait_ready(3000)) {
+            Serial.println("SD card filesystem timeout");
+        }
     }
     lua_core_init();
     config_load();
     ir_init();
     lua_core_run_string("math.randomseed(millis())");
 
-
     boot_screen();
 
-    status_bar_draw();
     menu_init();
+    status_bar_draw();
 
 
     char buf[1024];

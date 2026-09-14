@@ -125,6 +125,13 @@ static int l_millis(lua_State* L) {
     return 1;
 }
 
+static int l_key_is_pressed(lua_State* L) {
+    int key = luaL_checkinteger(L, 1);
+    lua_pushboolean(L, M5Cardputer.Keyboard.isKeyPressed((char)key));
+    return 1;
+}
+
+
 void register_hardware_bindings(lua_State* L) {
     lua_register(L, "config_set_theme_color", l_config_set_theme_color);
     lua_register(L, "config_set_boot_delay", l_config_set_boot_delay);
@@ -140,6 +147,7 @@ void register_hardware_bindings(lua_State* L) {
     lua_register(L, "ir_receive_get_command", l_ir_receive_get_command);
     lua_register(L, "ir_receive_get_protocol", l_ir_receive_get_protocol);
     lua_register(L, "ir_send_raw", l_ir_send_raw);
+    lua_register(L, "key_is_pressed", l_key_is_pressed);
 }
 
 //Wifi Bindings

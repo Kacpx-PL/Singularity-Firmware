@@ -15,7 +15,10 @@ struct DirEntry {
 
 bool storage_init();
 bool storage_is_ready();
+bool storage_wait_ready(unsigned long timeout_ms = 3000);
 bool storage_exists(const char* path);
+bool storage_ensure_dir(const char* path);
+std::string storage_escape_lua_string(const std::string& input);
 bool storage_read(const char* path, char* buf, size_t maxlen);
 bool storage_write(const char* path, const char* data);
 size_t storage_get_file_size(const char* path);

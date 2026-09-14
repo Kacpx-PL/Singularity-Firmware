@@ -11,6 +11,18 @@ bool storage_is_ready() {
     return SD.cardSize() > 0;
 }
 
+bool storage_wait_ready(unsigned long timeout_ms) {
+    unsigned long start = millis();
+    while (millis() - start < timeout_ms) {
+        if (SD.cardSize() > 0 && SD.exists("/")) {
+            delay(50);  // Small delay to ensure filesystem is fully ready
+            return true;
+        }
+        delay(10);
+    }
+    return false;
+}
+
 bool storage_exists(const char* path) {
     return SD.exists(path);
 }
@@ -26,12 +38,64 @@ bool storage_read(const char* path, char* buf, size_t maxlen) {
     return true;
 }
 
-bool storage_write(const char* path, const char* data) {
-    File f = SD.open(path, FILE_WRITE);
-    if (!f) return false;
+bool storage_ensure_dir(const char* path) {
+    // Recursively create directories if they don't exist
+    std::string pathStr(path);
+    size_t pos = 1;  // Skip leading /
+    
+    while ((pos = pathStr.find('/', pos)) != std::string::npos) {
+        std::string dir = pathStr.substr(0, pos);
+        if (!SD.exists(dir.c_str())) {
+            if (!SD.mkdir(dir.c_str())) {
+                Serial.printf("[STORAGE] Failed to create directory: %s\n", dir.c_str());
+                return false;
+            }
+        }
+        pos++;
+    }
+    return true;
+}
 
-    f.print(data);
+std::string storage_escape_lua_string(const std::string& input) {
+    std::string output;
+    for (char c : input) {
+        switch (c) {
+            case '\"': output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '\t': output += "\\t"; break;
+            default: output += c; break;
+        }
+    }
+    return output;
+}
+
+bool storage_write(const char* path, const char* data) {
+    // Ensure parent directory exists
+    std::string pathStr(path);
+    size_t lastSlash = pathStr.find_last_of('/');
+    if (lastSlash != std::string::npos) {
+        std::string dir = pathStr.substr(0, lastSlash);
+        if (!storage_ensure_dir(dir.c_str())) {
+            Serial.printf("[STORAGE] Failed to ensure directory for: %s\n", path);
+            return false;
+        }
+    }
+
+    File f = SD.open(path, FILE_WRITE);
+    if (!f) {
+        Serial.printf("[STORAGE] Failed to open file for writing: %s\n", path);
+        return false;
+    }
+
+    size_t written = f.print(data);
     f.close();
+    
+    if (written != strlen(data)) {
+        Serial.printf("[STORAGE] Write incomplete for %s (wrote %zu/%zu bytes)\n", path, written, strlen(data));
+        return false;
+    }
     return true;
 }
 

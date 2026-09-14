@@ -40,6 +40,9 @@ draw_status_bar()                              -- force a status bar redraw
 
 ### Input
 
+```
+key_is_pressed(key)                            -- checks for a pressed key (a int)
+```
 Keys register as **numbers**, not characters — compare against the numeric code, e.g. `if key == 8 then` for backspace, not `if key == '\b' then`.
 
 ### Storage (SD card)
