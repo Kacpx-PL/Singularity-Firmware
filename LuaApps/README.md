@@ -224,6 +224,7 @@ serial_print("debug message")   -- prints to the USB serial console
 
 - DO NOT USE while True do it will break the firmware and require a restart
 - After a app closes the whole state gets wiped therefore to carry any information between app lanuches you need to store them in a file
+- The top status bar reserves 20px at the top of the screen
 - If something is missing check lua_bindings.cpp (some bindings are redundant)
 - Individual app scripts should stay well under 100KB as a safe margin; scripts approaching 150-160KB+ 
   may fail to load depending on what else is active (WiFi, BLE scanning, etc.) at the time
