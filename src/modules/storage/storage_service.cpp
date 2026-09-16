@@ -4,7 +4,13 @@
 
 bool storage_init() {
     SPI.begin(SD_SPI_SCK_PIN, SD_SPI_MISO_PIN, SD_SPI_MOSI_PIN, SD_SPI_CS_PIN);
-    return SD.begin(SD_SPI_CS_PIN, SPI, 25000000);
+    bool mounted = SD.begin(SD_SPI_CS_PIN, SPI, 25000000);
+    Serial.printf("[STORAGE] SD.begin: %s\n", mounted ? "ok" : "failed");
+    if (mounted) {
+        Serial.printf("[STORAGE] card size: %llu bytes, root: %s\n",
+                      (unsigned long long)SD.cardSize(), SD.exists("/") ? "ok" : "missing");
+    }
+    return mounted;
 }
 
 bool storage_is_ready() {
@@ -117,8 +123,10 @@ std::vector<std::string> storage_list_files(const char* dir, const char* extensi
                 results.push_back(name);
             }
         }
-        file = root.openNextFile();
+            file.close();
+            file = root.openNextFile();
     }
+        root.close();
 
     return results;
 }
@@ -136,8 +144,10 @@ std::vector<std::string> storage_list_dirs(const char* dir) {
         if (file.isDirectory()) {
             results.push_back(file.name());
         }
-        file = root.openNextFile();
+            file.close();
+            file = root.openNextFile();
     }
+        root.close();
 
     return results;
 }
@@ -151,8 +161,10 @@ std::vector<DirEntry> storage_list_dir_entries(const char* dir) {
     File file = root.openNextFile();
     while (file) {
         results.push_back({file.name(), file.isDirectory()});
-        file = root.openNextFile();
+            file.close();
+            file = root.openNextFile();
     }
+        root.close();
 
     return results;
 }

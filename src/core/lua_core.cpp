@@ -1,5 +1,7 @@
 #include "lua_core.h"
 #include "lua_bindings.h"
+#include "../modules/ble/ble_service.h"
+#include "../modules/wifi/wifi.h"
 
 extern "C" {
     #include "lua.h"
@@ -12,6 +14,7 @@ extern "C" {
 #include "../modules/storage/storage_service.h"
 
 static lua_State* L;
+static const char* LUA_PROTECTED_GLOBALS = "singularity.protected_globals";
 
 
 static int l_print_screen(lua_State* L) {
@@ -41,9 +44,53 @@ void lua_core_init() {
 
     lua_register(L, "print_screen", l_print_screen);
     register_wifi_bindings(L);
+    register_ble_bindings(L);
     register_storage_bindings(L);
     register_ui_bindings(L);
     register_hardware_bindings(L);
+
+    lua_newtable(L);
+    int protected_globals = lua_gettop(L);
+    lua_pushglobaltable(L);
+    int globals = lua_gettop(L);
+    lua_pushnil(L);
+    while (lua_next(L, globals) != 0) {
+        lua_pushvalue(L, -2);
+        lua_pushboolean(L, 1);
+        lua_rawset(L, protected_globals);
+        lua_pop(L, 1);
+    }
+    lua_pushvalue(L, protected_globals);
+    lua_setfield(L, LUA_REGISTRYINDEX, LUA_PROTECTED_GLOBALS);
+    lua_settop(L, 0);
+}
+
+void lua_core_reset_app() {
+    uint32_t before = ESP.getFreeHeap();
+    wifi_scan_cancel();
+    ble_scan_cancel();
+    if (L) {
+        lua_pushglobaltable(L);
+        int globals = lua_gettop(L);
+        lua_getfield(L, LUA_REGISTRYINDEX, LUA_PROTECTED_GLOBALS);
+        int protected_globals = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, globals) != 0) {
+            lua_pushvalue(L, -2);
+            lua_rawget(L, protected_globals);
+            bool protected_global = !lua_isnil(L, -1);
+            lua_pop(L, 1);
+            if (!protected_global) {
+                lua_pushvalue(L, -2);
+                lua_pushnil(L);
+                lua_rawset(L, globals);
+            }
+            lua_pop(L, 1);
+        }
+        lua_settop(L, 0);
+        lua_gc(L, LUA_GCCOLLECT, 0);
+    }
+    Serial.printf("[LUA] app state reset, free heap: %u -> %u bytes\n", before, ESP.getFreeHeap());
 }
 
 void lua_core_run_string(const char* script) {

@@ -2,6 +2,8 @@
 
 See indvidual README files under each app for instructions and/or documentation
 
+For file structure see sd_files
+
 # Lua API Reference
 
 Every app has access to these global functions. No `require`/`import` needed — they're all registered directly into the Lua environment at startup.
@@ -13,6 +15,7 @@ Every app can define these two optional functions:
 ```lua
 function on_key(key)
     -- called when a key is pressed while this app is active
+    -- the key is in a int fromat (standard ascii code in decimal)
 end
 
 function update()
@@ -27,23 +30,23 @@ Any top-level code outside these functions runs once, immediately, when the app 
 ```lua
 draw_text("Hello", 10, 40, 2, 0xFFFF)          -- text, x, y, size (default 2), color (optional, default white)
 clear_screen()                                 -- clears the app's drawing area (leaves the status bar intact)
-set_color(0x07E0)                              -- set the draw color (RGB565) used by shape functions below
+set_color(0x07E0)                              -- set the draw color (RGB565 !!NOT HEX!!) used by shape functions below
 draw_rect(x, y, w, h)
 draw_rect_full(x, y, w, h)
 draw_line(x0, y0, x1, y1)
-draw_triangle(x0, y0, x1, y1, x2, y2)          -- outline
-draw_triangle_full(x0, y0, x1, y1, x2, y2)     -- filled
-draw_circle(x, y, radius)                      -- outline
-draw_circle_full(x, y, radius)                 -- filled
+draw_triangle(x0, y0, x1, y1, x2, y2)
+draw_triangle_full(x0, y0, x1, y1, x2, y2)
+draw_circle(x, y, radius)
+draw_circle_full(x, y, radius)
 draw_status_bar()                              -- force a status bar redraw
 ```
 
 ### Input
 
 ```
-key_is_pressed(key)                            -- checks for a pressed key (a int)
+key_is_pressed(key)                            -- checks for a pressed key (use a ascii to decimal converter)
 ```
-Keys register as **numbers**, not characters — compare against the numeric code, e.g. `if key == 8 then` for backspace, not `if key == '\b' then`.
+Keys register as **numbers**, not characters compare against the numeric code, e.g. `if key == 8 then` for backspace, not `if key == '\b' then`.
 
 ### Storage (SD card)
 
@@ -71,6 +74,58 @@ wifi_get_network_ssid(index)
 wifi_set_autoconnect(true)      -- true/false
 wifi_get_autoconnect()
 ```
+
+Wi-Fi discovery is asynchronous. Result indexes are zero-based, matching the existing network-management API.
+
+```lua
+wifi_scan_start(false)           -- optional argument includes hidden networks
+
+function update()
+    if wifi_scan_status() == "complete" then
+        for i = 0, wifi_scan_count() - 1 do
+            local network = wifi_scan_get(i)
+            serial_print(network.ssid .. " " .. network.rssi .. " dBm " .. network.bssid)
+        end
+    end
+end
+```
+
+Each Wi-Fi result contains `ssid`, `bssid`, `rssi`, `channel`, and numeric `encryption` fields.
+
+### BLE scanning
+
+BLE scanning is also asynchronous and uses the framework's bundled ESP32 BLE library. The optional duration is in seconds and active scanning is enabled by default.
+
+```lua
+ble_scan_start(5, true)
+
+function update()
+    if ble_scan_status() == "complete" then
+        for i = 0, ble_scan_count() - 1 do
+            local device = ble_scan_get(i)
+            serial_print(device.address .. " " .. device.rssi .. " dBm " .. device.name)
+            for _, uuid in ipairs(device.service_uuids) do
+                serial_print("service " .. uuid)
+            end
+        end
+    end
+end
+```
+
+BLE results contain `address`, `address_type`, `rssi`, `name`, `service_uuids`, `service_data_uuids`, `service_data`, `manufacturer_data`, and `payload`. `appearance` and `tx_power` are present when advertised. Binary values are Lua arrays of byte integers from 0 to 255.
+
+Use the deep advertisement parser to inspect every complete AD structure, including unknown types:
+
+```lua
+local fields = ble_parse_advertisement(device.payload)
+for _, field in ipairs(fields) do
+    serial_print("AD type=" .. field.type .. " length=" .. field.length)
+    if field.name then serial_print(field.name) end
+    if field.uuid then serial_print(field.uuid) end
+end
+```
+
+Parser fields always include `type`, `length`, and raw `data`. Known structures may additionally include `name`, `uuid`, `flags`, `tx_power`, or `company_id`. The parser never connects to a device or performs GATT discovery.
 
 ### IR
 
@@ -161,6 +216,14 @@ config_set_boot_delay(3000)      -- clamped to 1000–10000ms internally
 ### Misc
 
 ```lua
-millis(ms)                      -- waits a set amount of ms (warning blocking (pauses whole systme))
+millis()                        -- returns ms since boot delay example : if millis() - last_trigger(registered with millis) < interval then
 serial_print("debug message")   -- prints to the USB serial console
 ```
+
+### Extra info that doesnt fit any category
+
+- DO NOT USE while True do it will break the firmware and require a restart
+- After a app closes the whole state gets wiped therefore to carry any information between app lanuches you need to store them in a file
+- If something is missing check lua_bindings.cpp (some bindings are redundant)
+- Individual app scripts should stay well under 100KB as a safe margin; scripts approaching 150-160KB+ 
+  may fail to load depending on what else is active (WiFi, BLE scanning, etc.) at the time

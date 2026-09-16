@@ -14,6 +14,9 @@ static WifiState state = WIFI_STATE_IDLE;
 static unsigned long state_started = 0;
 static const WifiNetwork* pending_network = nullptr;
 static bool autoconnect_enabled = true;
+static bool lua_scan_active = false;
+static bool lua_scan_complete = false;
+static std::vector<WifiScanResult> lua_scan_results;
 
 bool wifi_connect(const char* ssid, const char* password) {
     WiFi.begin(ssid, password);
@@ -38,6 +41,27 @@ void wifi_start_auto_connect() {
 }
 
 void wifi_tick() {
+    if (lua_scan_active) {
+        int n = WiFi.scanComplete();
+        if (n >= 0) {
+            lua_scan_results.clear();
+            lua_scan_results.reserve(n);
+            for (int i = 0; i < n; i++) {
+                WifiScanResult result;
+                result.ssid = WiFi.SSID(i).c_str();
+                result.bssid = WiFi.BSSIDstr(i).c_str();
+                result.rssi = WiFi.RSSI(i);
+                result.channel = WiFi.channel(i);
+                result.encryption = (uint8_t)WiFi.encryptionType(i);
+                lua_scan_results.push_back(result);
+            }
+            WiFi.scanDelete();
+            lua_scan_active = false;
+            lua_scan_complete = true;
+        }
+        return;
+    }
+
     switch (state) {
         case WIFI_STATE_SCANNING: {
             int n = WiFi.scanComplete(); // -1 = still scanning, -2 = not started, >=0 = done
@@ -174,4 +198,39 @@ int wifi_get_network_count() {
 const char* wifi_get_network_ssid(int index) {
     if (index < 0 || index >= (int)known_networks.size()) return "";
     return known_networks[index].ssid.c_str();
+}
+
+bool wifi_scan_start(bool show_hidden) {
+    if (lua_scan_active || state == WIFI_STATE_SCANNING) return false;
+    int result = WiFi.scanNetworks(true, show_hidden);
+    if (result == WIFI_SCAN_FAILED) return false;
+    lua_scan_results.clear();
+    lua_scan_active = true;
+    lua_scan_complete = false;
+    return true;
+}
+
+void wifi_scan_cancel() {
+    if (!lua_scan_active) return;
+    WiFi.scanDelete();
+    lua_scan_active = false;
+    lua_scan_complete = false;
+    lua_scan_results.clear();
+    lua_scan_results.shrink_to_fit();
+}
+
+const char* wifi_scan_status() {
+    if (lua_scan_active) return "scanning";
+    if (lua_scan_complete) return "complete";
+    return "idle";
+}
+
+int wifi_scan_get_count() {
+    return lua_scan_complete ? (int)lua_scan_results.size() : 0;
+}
+
+bool wifi_scan_get_result(int index, WifiScanResult& result) {
+    if (!lua_scan_complete || index < 0 || index >= (int)lua_scan_results.size()) return false;
+    result = lua_scan_results[index];
+    return true;
 }

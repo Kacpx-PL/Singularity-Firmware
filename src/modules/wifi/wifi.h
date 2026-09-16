@@ -2,6 +2,14 @@
 #include <string>
 #include <vector>
 
+struct WifiScanResult {
+    std::string ssid;
+    std::string bssid;
+    int32_t rssi;
+    int32_t channel;
+    uint8_t encryption;
+};
+
 struct WifiNetwork {
     std::string ssid;
     std::string password;
@@ -33,4 +41,10 @@ const char* wifi_get_network_ssid(int index);
 const char* wifi_get_ip(); // returns "" if not connected
 const char* wifi_get_ssid(); // returns "" if not connected
 WifiState wifi_get_state();
+
+bool wifi_scan_start(bool show_hidden);
+void wifi_scan_cancel();
+const char* wifi_scan_status();
+int wifi_scan_get_count();
+bool wifi_scan_get_result(int index, WifiScanResult& result);
 

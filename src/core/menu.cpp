@@ -8,6 +8,7 @@
 #include <M5Cardputer.h>
 #include <vector>
 #include <string>
+#include <deque>
 #include "../core_apps/generated/core_apps_bundle.h"
 #include "../modules/storage/storage_service.h"
 #include "../modules/wifi/wifi.h"
@@ -15,6 +16,7 @@
 
 static std::vector<std::string> path_stack = { SG_APPS_DIR };
 static std::vector<App> apps;
+static std::deque<std::string> app_string_storage;
 
 // Stack of folder paths, so ESC/back can pop up one level.
 // Starts at root "/singularity/apps".
@@ -57,14 +59,17 @@ static void scan_sd_apps(const char* base_path) {
         
 
         if (m.type == "app") {
-            std::string* entry_path = new std::string(full_dir + "/" + m.entry);
-            std::string* name = new std::string(m.name);
-
-            apps.push_back(make_lua_app_from_file(name->c_str(), entry_path->c_str(), icon_by_name(m.icon)));
+            app_string_storage.emplace_back(m.name);
+            const char* name = app_string_storage.back().c_str();
+            app_string_storage.emplace_back(full_dir + "/" + m.entry);
+            const char* entry_path = app_string_storage.back().c_str();
+            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon)));
         } else if (m.type == "folder") {
-            std::string* name = new std::string(m.name);
-            std::string* folder_path = new std::string(full_dir);
-            apps.push_back(make_folder_app(name->c_str(), folder_path->c_str(), icon_by_name(m.icon)));
+            app_string_storage.emplace_back(m.name);
+            const char* name = app_string_storage.back().c_str();
+            app_string_storage.emplace_back(full_dir);
+            const char* folder_path = app_string_storage.back().c_str();
+            apps.push_back(make_folder_app(name, folder_path, icon_by_name(m.icon)));
         }
     }
 }
@@ -72,6 +77,7 @@ static void scan_sd_apps(const char* base_path) {
 static void rebuild_menu() {
 
     apps.clear();
+    app_string_storage.clear();
 
     if (path_stack.size() == 1) {
         // only show core apps at the true root

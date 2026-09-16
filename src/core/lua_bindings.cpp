@@ -5,6 +5,7 @@
 #include "../modules/ir/ir_service.h"
 #include "M5Cardputer.h"
 #include "../modules/wifi/wifi.h"
+#include "../modules/ble/ble_service.h"
 #include "../modules/ui/ui_list.h"
 #include "../modules/ui/ui_text_input.h"
 #include "../modules/ui/ui_file_browser.h"
@@ -131,6 +132,27 @@ static int l_key_is_pressed(lua_State* L) {
     return 1;
 }
 
+static int l_get_imu(lua_State* L) {
+
+    M5.Imu.update();
+
+    float ax = 0.0f, ay = 0.0f, az = 0.0f;
+    float gx = 0.0f, gy = 0.0f, gz = 0.0f;
+
+    M5.Imu.getAccel(&ax, &ay, &az);
+    M5.Imu.getGyro(&gx, &gy, &gz);
+
+    lua_createtable(L, 6, 0);
+
+    float values[6] = { ax, ay, az, gx, gy, gz };
+
+    for (int i = 0; i < 6; i++) {
+        lua_pushnumber(L, values[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+
+    return 1;
+}
 
 void register_hardware_bindings(lua_State* L) {
     lua_register(L, "config_set_theme_color", l_config_set_theme_color);
@@ -148,6 +170,7 @@ void register_hardware_bindings(lua_State* L) {
     lua_register(L, "ir_receive_get_protocol", l_ir_receive_get_protocol);
     lua_register(L, "ir_send_raw", l_ir_send_raw);
     lua_register(L, "key_is_pressed", l_key_is_pressed);
+    lua_register(L, "get_imu", l_get_imu);
 }
 
 //Wifi Bindings
@@ -219,6 +242,44 @@ static int l_wifi_get_network_ssid(lua_State* L) {
     return 1;
 }
 
+static int l_wifi_scan_start(lua_State* L) {
+    bool show_hidden = lua_toboolean(L, 1);
+    lua_pushboolean(L, wifi_scan_start(show_hidden));
+    return 1;
+}
+
+static int l_wifi_scan_status(lua_State* L) {
+    lua_pushstring(L, wifi_scan_status());
+    return 1;
+}
+
+static int l_wifi_scan_count(lua_State* L) {
+    lua_pushinteger(L, wifi_scan_get_count());
+    return 1;
+}
+
+static int l_wifi_scan_get(lua_State* L) {
+    int index = luaL_checkinteger(L, 1);
+    WifiScanResult result;
+    if (!wifi_scan_get_result(index, result)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_createtable(L, 0, 5);
+    lua_pushstring(L, result.ssid.c_str());
+    lua_setfield(L, -2, "ssid");
+    lua_pushstring(L, result.bssid.c_str());
+    lua_setfield(L, -2, "bssid");
+    lua_pushinteger(L, result.rssi);
+    lua_setfield(L, -2, "rssi");
+    lua_pushinteger(L, result.channel);
+    lua_setfield(L, -2, "channel");
+    lua_pushinteger(L, result.encryption);
+    lua_setfield(L, -2, "encryption");
+    return 1;
+}
+
 void register_wifi_bindings(lua_State* L) {
     lua_register(L, "wifi_connect", l_wifi_connect);
     lua_register(L, "wifi_is_connected", l_wifi_is_connected);
@@ -232,6 +293,148 @@ void register_wifi_bindings(lua_State* L) {
     lua_register(L, "wifi_remove_network", l_wifi_remove_network);
     lua_register(L, "wifi_get_network_count", l_wifi_get_network_count);
     lua_register(L, "wifi_get_network_ssid", l_wifi_get_network_ssid);
+    lua_register(L, "wifi_scan_start", l_wifi_scan_start);
+    lua_register(L, "wifi_scan_status", l_wifi_scan_status);
+    lua_register(L, "wifi_scan_count", l_wifi_scan_count);
+    lua_register(L, "wifi_scan_get", l_wifi_scan_get);
+}
+
+static void push_byte_table(lua_State* L, const uint8_t* data, size_t length) {
+    lua_createtable(L, (int)length, 0);
+    for (size_t i = 0; i < length; i++) {
+        lua_pushinteger(L, data[i]);
+        lua_rawseti(L, -2, (int)i + 1);
+    }
+}
+
+static void push_string_byte_table(lua_State* L, const std::string& value) {
+    push_byte_table(L, (const uint8_t*)value.data(), value.size());
+}
+
+static void push_string_array(lua_State* L, const std::vector<std::string>& values) {
+    lua_createtable(L, (int)values.size(), 0);
+    for (size_t i = 0; i < values.size(); i++) {
+        lua_pushstring(L, values[i].c_str());
+        lua_rawseti(L, -2, (int)i + 1);
+    }
+}
+
+static int l_ble_scan_start(lua_State* L) {
+    uint32_t duration = (uint32_t)luaL_optinteger(L, 1, 5);
+    bool active = lua_isnoneornil(L, 2) ? true : lua_toboolean(L, 2);
+    if (duration == 0) duration = 1;
+    lua_pushboolean(L, ble_scan_start(duration, active));
+    return 1;
+}
+
+static int l_ble_scan_status(lua_State* L) {
+    lua_pushstring(L, ble_scan_status());
+    return 1;
+}
+
+static int l_ble_scan_count(lua_State* L) {
+    lua_pushinteger(L, ble_scan_get_count());
+    return 1;
+}
+
+static int l_ble_scan_get(lua_State* L) {
+    int index = luaL_checkinteger(L, 1);
+    BleScanResult result;
+    if (!ble_scan_get_result(index, result)) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_createtable(L, 0, 13);
+    lua_pushstring(L, result.address.c_str());
+    lua_setfield(L, -2, "address");
+    lua_pushinteger(L, result.address_type);
+    lua_setfield(L, -2, "address_type");
+    lua_pushinteger(L, result.rssi);
+    lua_setfield(L, -2, "rssi");
+    lua_pushstring(L, result.name.c_str());
+    lua_setfield(L, -2, "name");
+    if (result.has_appearance) {
+        lua_pushinteger(L, result.appearance);
+        lua_setfield(L, -2, "appearance");
+    }
+    if (result.has_tx_power) {
+        lua_pushinteger(L, result.tx_power);
+        lua_setfield(L, -2, "tx_power");
+    }
+    push_string_array(L, result.service_uuids);
+    lua_setfield(L, -2, "service_uuids");
+    push_string_array(L, result.service_data_uuids);
+    lua_setfield(L, -2, "service_data_uuids");
+    lua_createtable(L, (int)result.service_data.size(), 0);
+    for (size_t i = 0; i < result.service_data.size(); i++) {
+        push_string_byte_table(L, result.service_data[i]);
+        lua_rawseti(L, -2, (int)i + 1);
+    }
+    lua_setfield(L, -2, "service_data");
+    push_string_byte_table(L, result.manufacturer_data);
+    lua_setfield(L, -2, "manufacturer_data");
+    push_byte_table(L, result.payload.data(), result.payload.size());
+    lua_setfield(L, -2, "payload");
+    return 1;
+}
+
+static int l_ble_parse_advertisement(lua_State* L) {
+    luaL_checktype(L, 1, LUA_TTABLE);
+    size_t length = lua_rawlen(L, 1);
+    if (length > 255) return luaL_error(L, "advertisement payload is limited to 255 bytes");
+
+    std::vector<uint8_t> data(length);
+    for (size_t i = 0; i < length; i++) {
+        lua_rawgeti(L, 1, (int)i + 1);
+        lua_Integer byte = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+        if (byte < 0 || byte > 255) return luaL_error(L, "advertisement bytes must be in range 0..255");
+        data[i] = (uint8_t)byte;
+    }
+
+    std::vector<BleAdField> fields = ble_parse_advertisement(data.data(), data.size());
+    lua_createtable(L, (int)fields.size(), 0);
+    for (size_t i = 0; i < fields.size(); i++) {
+        const BleAdField& field = fields[i];
+        lua_createtable(L, 0, 8);
+        lua_pushinteger(L, field.type);
+        lua_setfield(L, -2, "type");
+        lua_pushinteger(L, (lua_Integer)field.data.size() + 1);
+        lua_setfield(L, -2, "length");
+        push_byte_table(L, field.data.data(), field.data.size());
+        lua_setfield(L, -2, "data");
+        if (!field.name.empty()) {
+            lua_pushstring(L, field.name.c_str());
+            lua_setfield(L, -2, "name");
+        }
+        if (!field.uuid.empty()) {
+            lua_pushstring(L, field.uuid.c_str());
+            lua_setfield(L, -2, "uuid");
+        }
+        if (field.has_flags) {
+            lua_pushinteger(L, field.flags);
+            lua_setfield(L, -2, "flags");
+        }
+        if (field.has_tx_power) {
+            lua_pushinteger(L, field.tx_power);
+            lua_setfield(L, -2, "tx_power");
+        }
+        if (field.has_company_id) {
+            lua_pushinteger(L, field.company_id);
+            lua_setfield(L, -2, "company_id");
+        }
+        lua_rawseti(L, -2, (int)i + 1);
+    }
+    return 1;
+}
+
+void register_ble_bindings(lua_State* L) {
+    lua_register(L, "ble_scan_start", l_ble_scan_start);
+    lua_register(L, "ble_scan_status", l_ble_scan_status);
+    lua_register(L, "ble_scan_count", l_ble_scan_count);
+    lua_register(L, "ble_scan_get", l_ble_scan_get);
+    lua_register(L, "ble_parse_advertisement", l_ble_parse_advertisement);
 }
 
 //UI Bindings

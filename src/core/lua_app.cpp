@@ -23,7 +23,7 @@ static void lua_app_key(const char* data, char key) {
 }
 
 static void lua_app_close(const char* data) {
-    // Later: call a Lua "on_close()" function, and/or reset Lua state.
+    lua_core_reset_app();
 }
 
 static void folder_open(const char* path) {

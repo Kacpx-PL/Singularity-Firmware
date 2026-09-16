@@ -27,6 +27,7 @@ struct LuaConfig {
 };
 
 void lua_core_init();
+void lua_core_reset_app();
 void lua_core_run_string(const char* script);
 void lua_core_run_file(const char* path);
 void lua_core_call_update();

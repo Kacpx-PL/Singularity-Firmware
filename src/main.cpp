@@ -25,9 +25,13 @@ void setup() {
             Serial.println("SD card filesystem timeout");
         }
     }
+
     lua_core_init();
+
     config_load();
+
     ir_init();
+
     lua_core_run_string("math.randomseed(millis())");
 
     boot_screen();
