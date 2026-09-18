@@ -9,3 +9,4 @@ void register_ble_bindings(lua_State* L);
 void register_storage_bindings(lua_State* L);
 void register_ui_bindings(lua_State* L);
 void register_hardware_bindings(lua_State* L);
+void register_http_bindings(lua_State* L);

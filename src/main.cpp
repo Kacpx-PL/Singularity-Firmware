@@ -12,7 +12,6 @@
 
 void setup() {
     Serial.begin(115200);
-
     auto cfg = M5.config();
     M5Cardputer.begin(cfg);
 

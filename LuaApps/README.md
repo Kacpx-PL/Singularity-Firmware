@@ -228,3 +228,4 @@ serial_print("debug message")   -- prints to the USB serial console
 - If something is missing check lua_bindings.cpp (some bindings are redundant)
 - Individual app scripts should stay well under 100KB as a safe margin; scripts approaching 150-160KB+ 
   may fail to load depending on what else is active (WiFi, BLE scanning, etc.) at the time
+- minimize redrawing the elements, only draw the delta between frames if possible

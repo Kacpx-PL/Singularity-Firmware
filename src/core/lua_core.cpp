@@ -2,6 +2,7 @@
 #include "lua_bindings.h"
 #include "../modules/ble/ble_service.h"
 #include "../modules/wifi/wifi.h"
+#include "../modules/http/http_service.h"
 
 extern "C" {
     #include "lua.h"
@@ -15,6 +16,7 @@ extern "C" {
 
 static lua_State* L;
 static const char* LUA_PROTECTED_GLOBALS = "singularity.protected_globals";
+static constexpr size_t LUA_APP_MAX_FILE_SIZE = 32 * 1024;
 
 
 static int l_print_screen(lua_State* L) {
@@ -48,6 +50,7 @@ void lua_core_init() {
     register_storage_bindings(L);
     register_ui_bindings(L);
     register_hardware_bindings(L);
+    register_http_bindings(L);
 
     lua_newtable(L);
     int protected_globals = lua_gettop(L);
@@ -69,6 +72,7 @@ void lua_core_reset_app() {
     uint32_t before = ESP.getFreeHeap();
     wifi_scan_cancel();
     ble_scan_cancel();
+    http_cleanup();
     if (L) {
         lua_pushglobaltable(L);
         int globals = lua_gettop(L);
@@ -103,13 +107,13 @@ void lua_core_run_string(const char* script) {
 }
 
 void lua_core_run_file(const char* path) {
-    char* buf = (char*)malloc(8192);
+    char* buf = (char*)malloc(LUA_APP_MAX_FILE_SIZE + 1);
     if (!buf) {
         Serial.println("Failed to allocate buffer for script file");
         return;
     }
 
-    if (!storage_read(path, buf, 8192)) {
+    if (!storage_read(path, buf, LUA_APP_MAX_FILE_SIZE + 1)) {
         Serial.println("Failed to read script file");
         free(buf);
         return;

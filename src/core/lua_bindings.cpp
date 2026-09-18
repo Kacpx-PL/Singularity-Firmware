@@ -9,11 +9,16 @@
 #include "../modules/ui/ui_list.h"
 #include "../modules/ui/ui_text_input.h"
 #include "../modules/ui/ui_file_browser.h"
+#include "../modules/http/http_service.h"
 
 extern "C" {
     #include "lua.h"
     #include "lauxlib.h"
 }
+
+#include <ArduinoJson.h>
+#include <string>
+#include <vector>
 
 //default draw color
 static uint16_t g_draw_color = 0xFFFF;
@@ -510,7 +515,7 @@ static int l_draw_text(lua_State* L) {
     int y = luaL_checkinteger(L, 3);
     int size = luaL_optinteger(L, 4, 2);
     if(size < 1){size = 1;}
-    uint32_t color = luaL_optinteger(L, 5, 0xFFFFFFFF);
+    uint16_t color = luaL_optinteger(L, 5, 0xFFFF);
     M5Cardputer.Display.setTextColor(color, BLACK);
     M5Cardputer.Display.setTextSize(size);
     M5Cardputer.Display.drawString(text, x, y);
@@ -605,6 +610,107 @@ static int l_file_browser_handle_key(lua_State* L) {
 static int l_file_browser_get_selected_path(lua_State* L) {
     lua_pushstring(L, file_browser_get_selected_path());
     return 1;
+}
+
+void lua_push_json_value(lua_State* L, JsonVariantConst v) {
+    if (v.is<JsonObjectConst>()) {
+        lua_newtable(L);
+        for (JsonPairConst kv : v.as<JsonObjectConst>()) {
+            lua_pushstring(L, kv.key().c_str());
+            lua_push_json_value(L, kv.value());
+            lua_settable(L, -3);
+        }
+    } else if (v.is<JsonArrayConst>()) {
+        lua_newtable(L);
+        int i = 1;
+        for (JsonVariantConst elem : v.as<JsonArrayConst>()) {
+            lua_push_json_value(L, elem);
+            lua_rawseti(L, -2, i++);
+        }
+    } else if (v.is<bool>()) {
+        lua_pushboolean(L, v.as<bool>());
+    } else if (v.is<lua_Number>()) {
+        lua_pushnumber(L, v.as<lua_Number>());
+    } else if (v.is<const char*>()) {
+        lua_pushstring(L, v.as<const char*>());
+    } else {
+        lua_pushnil(L);
+    }
+}
+
+static int l_http_fetch(lua_State* L) {
+    const char* url = luaL_checkstring(L, 1);
+    int timeout_ms = luaL_optinteger(L, 2, 10000);
+
+    HttpResponse response = http_fetch(url, timeout_ms);
+    lua_createtable(L, 0, 4);
+
+    lua_pushinteger(L, response.status_code);
+    lua_setfield(L, -2, "status_code");
+
+    lua_pushboolean(L, response.ok);
+    lua_setfield(L, -2, "ok");
+
+    if (!response.body.empty()) {
+        lua_pushstring(L, response.body.c_str());
+        lua_setfield(L, -2, "body");
+    } else {
+        lua_pushstring(L, "");
+        lua_setfield(L, -2, "body");
+    }
+
+    if (!response.error.empty()) {
+        lua_pushstring(L, response.error.c_str());
+        lua_setfield(L, -2, "error");
+    } else {
+        lua_pushstring(L, "");
+        lua_setfield(L, -2, "error");
+    }
+
+    return 1;
+}
+
+static int l_json_parse(lua_State* L) {
+    const char* text = nullptr;
+    bool popped_body = false;
+
+    if (lua_isstring(L, 1)) {
+        text = lua_tostring(L, 1);
+    } else if (lua_istable(L, 1)) {
+        lua_getfield(L, 1, "body");
+        if (!lua_isstring(L, -1)) {
+            lua_pop(L, 1);
+            lua_pushnil(L);
+            lua_pushstring(L, "json_parse expected a JSON string or an http_fetch result table");
+            return 2;
+        }
+        text = lua_tostring(L, -1);
+        popped_body = true;
+    } else {
+        return luaL_argerror(L, 1, "string or http_fetch result table expected");
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, text);
+
+    // Clean up the pushed "body" string from stack after parsing finishes
+    if (popped_body) {
+        lua_remove(L, -1);
+    }
+
+    if (err) {
+        lua_pushnil(L);
+        lua_pushstring(L, err.c_str());
+        return 2;
+    }
+
+    lua_push_json_value(L, doc.as<JsonVariantConst>());
+    return 1;
+}
+
+void register_http_bindings(lua_State* L) {
+    lua_register(L, "http_fetch", l_http_fetch);
+    lua_register(L, "json_parse", l_json_parse);
 }
 
 void register_ui_bindings(lua_State* L) {
