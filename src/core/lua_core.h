@@ -11,6 +11,7 @@ struct LuaManifest {
     std::string name;
     std::string icon;
     std::string entry;  // only meaningful when type == "app"
+    int priority;       // default 100
     bool valid;
 };
 

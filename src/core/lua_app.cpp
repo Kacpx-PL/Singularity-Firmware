@@ -35,14 +35,14 @@ static void folder_key(const char* data, char key) {}
 static void folder_close(const char* data) {}
 
 // -- make apps --
-App make_lua_app(const char* name, const char* script, const Icon* icon) {
-    return { name, script, icon, false, lua_app_open, lua_app_loop, lua_app_key, lua_app_close };
+App make_lua_app(const char* name, const char* script, const Icon* icon, int priority) {
+    return { name, script, icon, priority,false, lua_app_open, lua_app_loop, lua_app_key, lua_app_close };
 }
 
-App make_lua_app_from_file(const char* name, const char* path, const Icon* icon) {
-    return { name, path, icon, false, lua_app_open_from_file, lua_app_loop, lua_app_key, lua_app_close };
+App make_lua_app_from_file(const char* name, const char* path, const Icon* icon, int priority) {
+    return { name, path, icon, priority, false, lua_app_open_from_file, lua_app_loop, lua_app_key, lua_app_close };
 }
 
-App make_folder_app(const char* name, const char* path, const Icon* icon) {
-    return { name, path, icon, true, folder_open, folder_loop, folder_key, folder_close };
+App make_folder_app(const char* name, const char* path, const Icon* icon, int priority) {
+    return { name, path, icon, priority, true, folder_open, folder_loop, folder_key, folder_close };
 }

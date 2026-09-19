@@ -63,13 +63,13 @@ static void scan_sd_apps(const char* base_path) {
             const char* name = app_string_storage.back().c_str();
             app_string_storage.emplace_back(full_dir + "/" + m.entry);
             const char* entry_path = app_string_storage.back().c_str();
-            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon)));
+            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon), m.priority));
         } else if (m.type == "folder") {
             app_string_storage.emplace_back(m.name);
             const char* name = app_string_storage.back().c_str();
             app_string_storage.emplace_back(full_dir);
             const char* folder_path = app_string_storage.back().c_str();
-            apps.push_back(make_folder_app(name, folder_path, icon_by_name(m.icon)));
+            apps.push_back(make_folder_app(name, folder_path, icon_by_name(m.icon), m.priority));
         }
     }
 }
@@ -81,11 +81,15 @@ static void rebuild_menu() {
 
     if (path_stack.size() == 1) {
         // only show core apps at the true root
-        apps.push_back(make_lua_app("WiFi", script_wifi, &icon_wifi));
-        apps.push_back(make_lua_app("Config", script_config, &icon_cog));
+        apps.push_back(make_lua_app("WiFi", script_wifi, &icon_wifi, 10));
+        apps.push_back(make_lua_app("Config", script_config, &icon_cog, 20));
     }
 
     scan_sd_apps(path_stack.back().c_str());
+
+    std::sort(apps.begin(), apps.end(), [](const App& a, const App& b) {
+        return a.priority < b.priority;
+    });
 }
 
 void menu_enter_folder(const char* path) {
@@ -150,8 +154,8 @@ static void draw_menu() {
     //int iconX = (screenW - 40) / 2;
     //int iconY = centerY - 20;
     
-    int iconSize = 16; // your source icon size
-    float scale = 4.0f; // 16 * 4 = 64
+    int iconSize = 16; // source icon size
+    float scale = 4.0f;
     int iconCenterX = screenW / 2;
     int iconCenterY = centerY;
 

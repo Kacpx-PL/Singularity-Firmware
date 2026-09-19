@@ -248,6 +248,13 @@ LuaManifest lua_core_load_manifest(const char* script) {
     if (lua_isstring(L, -1)) m.entry = lua_tostring(L, -1);
     lua_pop(L, 1);
 
+    m.priority = 100;
+    lua_getfield(L, -1, "priority");
+    if (lua_isnumber(L, -1)) {
+        m.priority = (int)lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
+
     lua_pop(L, 1); // pop the table itself
     lua_settop(L, 0); // completely clear stack
 
