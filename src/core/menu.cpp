@@ -15,6 +15,7 @@
 #include "config.h"
 
 static std::vector<std::string> path_stack = { SG_APPS_DIR };
+static std::vector<std::string> name_stack = { "" };
 static std::vector<App> apps;
 static std::deque<std::string> app_string_storage;
 
@@ -92,8 +93,9 @@ static void rebuild_menu() {
     });
 }
 
-void menu_enter_folder(const char* path) {
+void menu_enter_folder(const char* path, const char* name) {
     path_stack.push_back(path);
+    name_stack.push_back(name);
     rebuild_menu();
     selected = 0;
     needs_redraw = true;
@@ -102,6 +104,7 @@ void menu_enter_folder(const char* path) {
 void menu_go_back() {
     if (path_stack.size() > 1) {
         path_stack.pop_back();
+        name_stack.pop_back();
         rebuild_menu();
         selected = 0;
         needs_redraw = true;
@@ -126,8 +129,7 @@ static void draw_arrow_right(int x, int y) {
     M5Cardputer.Display.fillTriangle(x, y, x - 15, y - 20, x - 15, y + 20, THEME_COLOR);
 }
 
-static void draw_menu() {
-    
+static void draw_menu() {    
 
     M5Cardputer.Display.fillScreen(BLACK);
     status_bar_draw();
@@ -135,6 +137,14 @@ static void draw_menu() {
     int screenW = M5Cardputer.Display.width();
     int screenH = M5Cardputer.Display.height();
     int centerY = STATUS_BAR_HEIGHT + (screenH - STATUS_BAR_HEIGHT) / 2;
+
+    if (name_stack.back() != "") {
+        draw_icon_scaled(18, 28, icon_folder8, 1.0f, THEME_COLOR); // adjust position to sit next to text
+        M5Cardputer.Display.setTextSize(1);
+        M5Cardputer.Display.setTextColor(THEME_COLOR, BLACK);
+        M5Cardputer.Display.setCursor(28, 24);
+        M5Cardputer.Display.print(name_stack.back().c_str());
+    }
 
     if (apps.empty()) {
         M5Cardputer.Display.setTextSize(1);
@@ -203,7 +213,7 @@ void menu_update(char key) {
                 // because on_open() might call rebuild_menu() which clears the apps vector!
                 bool is_folder = apps[selected].is_folder;
                 
-                apps[selected].on_open(apps[selected].data);
+                apps[selected].on_open(apps[selected].data, apps[selected].name);
                 status_bar_draw();
                 last_status_refresh = millis();
                 

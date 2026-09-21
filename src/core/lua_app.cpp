@@ -2,13 +2,13 @@
 #include "lua_core.h"
 #include "menu.h"
 
-static void lua_app_open(const char* script) {
+static void lua_app_open(const char* script, const char* name) {
     if (script) {
         lua_core_run_string(script);
     }
 }
 
-static void lua_app_open_from_file(const char* path) {
+static void lua_app_open_from_file(const char* path, const char* name) {
     if (path) {
         lua_core_run_file(path);
     }
@@ -26,8 +26,8 @@ static void lua_app_close(const char* data) {
     lua_core_reset_app();
 }
 
-static void folder_open(const char* path) {
-    menu_enter_folder(path);
+static void folder_open(const char* path, const char* name) {
+    menu_enter_folder(path, name);
 }
 
 static void folder_loop(const char* data) {}

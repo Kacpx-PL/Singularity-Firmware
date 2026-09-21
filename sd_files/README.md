@@ -8,7 +8,8 @@ return {
     type = "app",               # "app" or "folder"
     name = "App 1",
     icon = "icon_code",         # see full list below
-    entry = "main.lua"          # name of the main .lua file of the app, remove for folders
+    entry = "main.lua",         # name of the main .lua file of the app, remove for folders
+    priority = 50               # default is 100 wifi app is 10 and config 20
 }
 ```
 
