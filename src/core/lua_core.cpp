@@ -45,12 +45,16 @@ void lua_core_init() {
     luaL_openlibs(L); // for now, open everything
 
     lua_register(L, "print_screen", l_print_screen);
+    register_config_bindings(L);
+    register_gpio_bindings(L);
+    register_ir_bindings(L);
+    register_system_bindings(L);
     register_wifi_bindings(L);
     register_ble_bindings(L);
-    register_storage_bindings(L);
-    register_ui_bindings(L);
-    register_hardware_bindings(L);
     register_http_bindings(L);
+    registergfx_bindings(L);
+
+    register_storage_bindings(L); // defined here
 
     lua_newtable(L);
     int protected_globals = lua_gettop(L);

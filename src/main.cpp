@@ -31,7 +31,7 @@ void setup() {
 
     ir_init();
 
-    lua_core_run_string("math.randomseed(millis())");
+    lua_core_run_string("math.randomseed(sys.millis())");
 
     boot_screen();
 

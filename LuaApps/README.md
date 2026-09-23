@@ -1,21 +1,21 @@
 # Apps
 
-See indvidual README files under each app for instructions and/or documentation
+See individual README files under each app for instructions and/or documentation.
 
-For file structure see sd_files
+For file structure see `sd_files`.
 
 # Lua API Reference
 
-Every app has access to these global functions. No `require`/`import` needed — they're all registered directly into the Lua environment at startup.
+Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `ir`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
 
-## App lifecycle
+## App Lifecycle
 
 Every app can define these two optional functions:
 
 ```lua
 function on_key(key)
     -- called when a key is pressed while this app is active
-    -- the key is in a int fromat (standard ascii code in decimal)
+    -- the key is an integer (standard ASCII code in decimal)
 end
 
 function update()
@@ -25,26 +25,29 @@ end
 
 Any top-level code outside these functions runs once, immediately, when the app is opened.
 
-### Display
+### Display (gfx)
 
 ```lua
-draw_text("Hello", 10, 40, 2, 0xFFFF)          -- text, x, y, size (default 2), color (optional, default white)
-clear_screen()                                 -- clears the app's drawing area (leaves the status bar intact)
-set_color(0x07E0)                              -- set the draw color (RGB565 !!NOT HEX!!) used by shape functions below
-draw_rect(x, y, w, h)
-draw_rect_full(x, y, w, h)
-draw_line(x0, y0, x1, y1)
-draw_triangle(x0, y0, x1, y1, x2, y2)
-draw_triangle_full(x0, y0, x1, y1, x2, y2)
-draw_circle(x, y, radius)
-draw_circle_full(x, y, radius)
-draw_status_bar()                              -- force a status bar redraw
+gfx.drawText("Hello", 10, 40, 2, 0xFFFF)     -- text, x, y, size (default 2), color (optional, default white)
+gfx.clearScreen()                             -- clears the app's drawing area (leaves the status bar intact)
+gfx.setColor(0x07E0)                          -- set the draw color (RGB565 !!NOT HEX!!) used by shape functions below
+gfx.drawRect(x, y, w, h)
+gfx.drawRectF(x, y, w, h)                    -- full/filled rectangle
+gfx.drawLine(x0, y0, x1, y1)
+gfx.drawTri(x0, y0, x1, y1, x2, y2)
+gfx.drawTriF(x0, y0, x1, y1, x2, y2)         -- full/filled triangle
+gfx.drawCircle(x, y, radius)
+gfx.drawCircleF(x, y, radius)                -- full/filled circle
+gfx.drawStatusBar()                          -- force a status bar redraw
 ```
 
-### Input
+### Input & System
 
 ```
-key_is_pressed(key)                            -- checks for a pressed key (use a ascii to decimal converter)
+sys.keyPressed(key)                          -- checks for a pressed key (use an ASCII to decimal converter)
+sys.millis()                                 -- returns ms since boot
+sys.serialPrint("debug message")              -- prints to the USB serial console
+local imuData = sys.getImu()                  -- gets current IMU sensor reading
 ```
 Keys register as **numbers**, not characters compare against the numeric code, e.g. `if key == 8 then` for backspace, not `if key == '\b' then`.
 
@@ -59,32 +62,32 @@ storage_exists("/path/to/file")
 ### WiFi
 
 ```lua
-wifi_connect(ssid, password)     -- blocking (hangs system, deprecated), returns true/false
-wifi_is_connected()
-wifi_get_ip()
-wifi_get_ssid()                  -- from currently connected network
-wifi_get_rssi()
-wifi_disconnect()
+wifi.connect(ssid, password)     -- blocking (hangs system, deprecated), returns true/false
+wifi.connected()
+wifi.getIP()
+wifi.getSSID()                  -- from currently connected network
+wifi.getRssi()
+wifi.disconnect()
 
-wifi_add_network(ssid, password) -- saves to the known-networks list
-wifi_remove_network(index)
-wifi_get_network_count()
-wifi_get_network_ssid(index)
+wifi.addNetwork(ssid, password) -- saves to the known-networks list
+wifi.remNetwork(index)
+wifi.getNetworkCount()
+wifi.getNetworkSSID(index)
 
-wifi_set_autoconnect(true)      -- true/false
-wifi_get_autoconnect()
+wifi.setAutoconnect(true)       -- true/false
+wifi.getAutoconnect()
 ```
 
 Wi-Fi discovery is asynchronous. Result indexes are zero-based, matching the existing network-management API.
 
 ```lua
-wifi_scan_start(false)           -- optional argument includes hidden networks
+wifi.scanStart(false)           -- optional argument includes hidden networks
 
 function update()
-    if wifi_scan_status() == "complete" then
-        for i = 0, wifi_scan_count() - 1 do
-            local network = wifi_scan_get(i)
-            serial_print(network.ssid .. " " .. network.rssi .. " dBm " .. network.bssid)
+    if wifi.scanStatus() == "complete" then
+        for i = 0, wifi.scanCount() - 1 do
+            local network = wifi.scanGet(i)
+            sys.serialPrint(network.ssid .. " " .. network.rssi .. " dBm " .. network.bssid)
         end
     end
 end
@@ -97,15 +100,15 @@ Each Wi-Fi result contains `ssid`, `bssid`, `rssi`, `channel`, and numeric `encr
 BLE scanning is also asynchronous and uses the framework's bundled ESP32 BLE library. The optional duration is in seconds and active scanning is enabled by default.
 
 ```lua
-ble_scan_start(5, true)
+ble.scanStart(5, true)
 
 function update()
-    if ble_scan_status() == "complete" then
-        for i = 0, ble_scan_count() - 1 do
-            local device = ble_scan_get(i)
-            serial_print(device.address .. " " .. device.rssi .. " dBm " .. device.name)
+    if ble.scanStatus() == "complete" then
+        for i = 0, ble.scanCount() - 1 do
+            local device = ble.scanGet(i)
+            sys.serialPrint(device.address .. " " .. device.rssi .. " dBm " .. device.name)
             for _, uuid in ipairs(device.service_uuids) do
-                serial_print("service " .. uuid)
+                sys.serialPrint("service " .. uuid)
             end
         end
     end
@@ -117,11 +120,11 @@ BLE results contain `address`, `address_type`, `rssi`, `name`, `service_uuids`, 
 Use the deep advertisement parser to inspect every complete AD structure, including unknown types:
 
 ```lua
-local fields = ble_parse_advertisement(device.payload)
+local fields = ble.parseAdvert(device.payload)
 for _, field in ipairs(fields) do
-    serial_print("AD type=" .. field.type .. " length=" .. field.length)
-    if field.name then serial_print(field.name) end
-    if field.uuid then serial_print(field.uuid) end
+    sys.serialPrint("AD type=" .. field.type .. " length=" .. field.length)
+    if field.name then sys.serialPrint(field.name) end
+    if field.uuid then sys.serialPrint(field.uuid) end
 end
 ```
 
@@ -133,26 +136,26 @@ Uses [Arduino IRremote](https://github.com/Arduino-IRremote/Arduino-IRremote) li
 
 ```lua
 -- Sending 
-ir_send_protocol("NEC", address, command)   -- works for NEC/NECext/Onkyo/Apple, Denon/Sharp,
-                                            -- Panasonic/Kaseikyo, JVC, LG, RC5, RC6, Samsung,
-                                            -- Sony, Marantz, BoseWave, Lego, FAST, Whynter, MagiQuest
+ir.sendProtocol("NEC", address, command)   -- works for NEC/NECext/Onkyo/Apple, Denon/Sharp,
+                                           -- Panasonic/Kaseikyo, JVC, LG, RC5, RC6, Samsung,
+                                           -- Sony, Marantz, BoseWave, Lego, FAST, Whynter, MagiQuest
 
-ir_send_raw({2762, 793, 534, ...}, 38)      -- raw timing array (µs), carrier frequency in kHz
+ir.sendRaw({2762, 793, 534, ...}, 38)      -- raw timing array (µs), carrier frequency in kHz
 
 -- Receiving
-if ir_receive_available() then
-    local protocol = ir_receive_get_protocol()
-    local address  = ir_receive_get_address()
-    local command  = ir_receive_get_command()
-    ir_receive_resume()  -- must call this after reading a result to listen for the next signal
+if ir.receiveAvbl() then
+    local protocol = ir.receiveGetProtocol()
+    local address  = ir.receiveGetAddress()
+    local command  = ir.receiveGetCmd()
+    ir.receiveResume()  -- must call this after reading a result to listen for the next signal
 end
 ```
 
 ### GPIO
 
 ```lua
-gpio_write(pin, value)
-gpio_read(pin)
+gpio.write(pin, value)
+gpio.read(pin)
 ```
 Reserved pins (SD card, IR LED, EXT/cap header) will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
 
@@ -160,14 +163,14 @@ Reserved pins (SD card, IR LED, EXT/cap header) will raise a Lua error if access
 
 **Scrolling list:**
 ```lua
-list_clear()
-list_add_item("Option 1")
-list_add_item("Option 2")
-list_draw()
+gfx.listClr()
+gfx.listAddItem("Option 1")
+gfx.listAddItem("Option 2")
+gfx.listDraw()
 
 function on_key(key)
-    local selected = list_handle_key(key)  -- returns the selected index on Enter, -1 otherwise
-    list_draw()
+    local selected = gfx.listHandleKey(key)  -- returns the selected index on Enter, -1 otherwise
+    gfx.listDraw()
     if selected == 0 then
         -- "Option 1" was chosen
     end
@@ -176,14 +179,14 @@ end
 
 **Text input:**
 ```lua
-text_input_start("Enter SSID:", false)  -- prompt, mask (true for passwords)
-text_input_draw()
+gfx.textInputStart("Enter SSID:", false)  -- prompt, mask (true for passwords)
+gfx.textInputDraw()
 
 function on_key(key)
-    local result = text_input_handle_key(key)
-    text_input_draw()
+    local result = gfx.textInputHandleKey(key)
+    gfx.textInputDraw()
     if result == 1 then
-        local value = text_input_get_value()
+        local value = gfx.textInputGetVal()
     elseif result == 2 then
         -- backspace pressed on an empty field — treat as "cancelled"
     end
@@ -192,15 +195,14 @@ end
 
 **File browser:**
 ```lua
-file_browser_start("/singularity/system/ir_db", false)  -- root path, folder-select-only mode
-file_browser_draw()
+gfx.fileBrowserStart("/singularity/system/ir_db", false)  -- root path, folder-select-only mode
+gfx.fileBrowserDraw()
 
 function on_key(key)
-    local result = file_browser_handle_key(key)
-    file_browser_draw()
+    local result = gfx.fileBrowserHandleKey(key)
+    gfx.fileBrowserDraw()
     if result == 1 then
-        local path = file_browser_get_selected_path()
-        local is_folder = file_browser_selected_is_dir()
+        local path = gfx.fileBrowserGetSelectedPath()
     end
 end
 ```
@@ -209,8 +211,8 @@ Navigation is constrained to the given root path — `..` appears when inside a 
 ### Config
 
 ```lua
-config_set_theme_color(0x07E0)   -- applies immediately and persists to config.lua
-config_set_boot_delay(3000)      -- clamped to 1000–10000ms internally
+cnfig.setThemeColor(0x07E0)   -- applies immediately and persists to config.lua
+cnfig.setBootDelay(3000)      -- clamped to 1000–10000ms internally
 ```
 
 ### Misc
@@ -226,6 +228,5 @@ serial_print("debug message")   -- prints to the USB serial console
 - After a app closes the whole state gets wiped therefore to carry any information between app lanuches you need to store them in a file
 - The top status bar reserves 20px at the top of the screen
 - If something is missing check lua_bindings.cpp (some bindings are redundant)
-- Individual app scripts should stay well under 100KB as a safe margin; scripts approaching 150-160KB+ 
-  may fail to load depending on what else is active (WiFi, BLE scanning, etc.) at the time
+- Max script file size is 32KB while 160KB is mostly free for modules/values
 - minimize redrawing the elements, only draw the delta between frames if possible

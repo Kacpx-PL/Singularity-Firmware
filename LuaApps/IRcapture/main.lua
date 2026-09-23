@@ -5,24 +5,24 @@ local pending_signal = nil
 local target_path = nil
 
 local function show_menu()
-    clear_screen()
-    draw_text("IR Capture", 10, 25, 2)
-    list_clear()
-    list_add_item("Load existing remote")
-    list_add_item("Create new remote")
-    list_draw()
+    gfx.clearScreen()
+    gfx.drawText("IR Capture", 10, 25, 2)
+    gfx.listClr()
+    gfx.listAddItem("Load existing remote")
+    gfx.listAddItem("Create new remote")
+    gfx.listDraw()
 end
 
 show_menu()
 
 local function show_status()
-    clear_screen()
-    draw_text("IR Capture", 10, 25, 1)
+    gfx.clearScreen()
+    gfx.drawText("IR Capture", 10, 25, 1)
     if locked_protocol then
-        draw_text("Protocol: " .. locked_protocol, 5, 40, 1)
+        gfx.drawText("Protocol: " .. locked_protocol, 5, 40, 1)
     end
-    draw_text("Signals: " .. #captured_signals, 5, 55, 1)
-    draw_text("Press remote button...", 5, 70, 1)
+    gfx.drawText("Signals: " .. #captured_signals, 5, 55, 1)
+    gfx.drawText("Press remote button...", 5, 70, 1)
 end
 
 local function parse_ir_file(content)
@@ -64,30 +64,30 @@ end
 
 function on_key(key)
     if mode == "menu" then
-        local result = list_handle_key(key)
-        clear_screen()
-        draw_text("IR Capture", 10, 25, 2)
-        list_draw()
+        local result = gfx.listHandleKey(key)
+        gfx.clearScreen()
+        gfx.drawText("IR Capture", 10, 25, 2)
+        gfx.listDraw()
 
         if result == 0 then
             mode = "browse_load"
-            file_browser_start("/singularity/system/ir_db", false)
-            clear_screen()
-            file_browser_draw()
+            gfx.fileBrowserStart("/singularity/system/ir_db", false)
+            gfx.clearScreen()
+            gfx.fileBrowserDraw()
         elseif result == 1 then
             mode = "browse_folder"
-            file_browser_start("/singularity/system/ir_db", true)
-            clear_screen()
-            file_browser_draw()
+            gfx.fileBrowserStart("/singularity/system/ir_db", true)
+            gfx.clearScreen()
+            gfx.fileBrowserDraw()
         end
 
     elseif mode == "browse_load" then
-        local result = file_browser_handle_key(key)
-        clear_screen()
-        file_browser_draw()
+        local result = gfx.fileBrowserHandleKey(key)
+        gfx.clearScreen()
+        gfx.fileBrowserDraw()
 
         if result == 1 then
-            target_path = file_browser_get_selected_path()
+            target_path = gfx.fileBrowserGetSelectedPath()
             local content = storage_read(target_path)
             captured_signals = content and parse_ir_file(content) or {}
             if #captured_signals > 0 then
@@ -98,27 +98,27 @@ function on_key(key)
         end
 
     elseif mode == "browse_folder" then
-        local result = file_browser_handle_key(key)
-        clear_screen()
-        file_browser_draw()
+        local result = gfx.fileBrowserHandleKey(key)
+        gfx.clearScreen()
+        gfx.fileBrowserDraw()
 
         if result == 1 then
-            local folder = file_browser_get_selected_path()
+            local folder = gfx.fileBrowserGetSelectedPath()
             mode = "naming_file"
-            text_input_start("Remote name:", false)
-            text_input_draw()
+            gfx.textInputStart("Remote name:", false)
+            gfx.textInputDraw()
             target_path = folder -- store folder temporarily, finalize after naming
         end
 
     elseif mode == "naming_file" then
-        local r = text_input_handle_key(key)
+        local r = gfx.textInputHandleKey(key)
         if r == 2 then
             mode = "menu"
             show_menu()
         else
-            text_input_draw()
+            gfx.textInputDraw()
             if r == 1 then
-                local name = text_input_get_value()
+                local name = gfx.textInputGetVal()
                 target_path = target_path .. "/" .. name .. ".ir"
                 captured_signals = {}
                 locked_protocol = nil
@@ -128,15 +128,15 @@ function on_key(key)
         end
 
     elseif mode == "naming_signal" then
-        local r = text_input_handle_key(key)
+        local r = gfx.textInputHandleKey(key)
         if r == 2 then
             pending_signal = nil
             mode = "capture"
             show_status()
         else
-            text_input_draw()
+            gfx.textInputDraw()
             if r == 1 then
-                pending_signal.name = text_input_get_value()
+                pending_signal.name = gfx.textInputGetVal()
                 table.insert(captured_signals, pending_signal)
                 if locked_protocol == nil then
                     locked_protocol = pending_signal.protocol
@@ -151,29 +151,29 @@ function on_key(key)
 end
 
 function update()
-    if mode == "capture" and ir_receive_available() then
-        local protocol = ir_receive_get_protocol()
-        local address = ir_receive_get_address()
-        local command = ir_receive_get_command()
-        ir_receive_resume()
+    if mode == "capture" and ir.receiveAvbl() then
+        local protocol = ir.receiveGetProtocol()
+        local address = ir.receiveGetAddress()
+        local command = ir.receiveGetCmd()
+        ir.receiveResume()
 
         if command == 0 and address == 0 then return end
 
         if locked_protocol ~= nil and protocol ~= locked_protocol then
-            clear_screen()
-            draw_text("Protocol mismatch!", 5, 25, 1)
-            draw_text("Expected: " .. locked_protocol, 5, 40, 1)
-            draw_text("Got: " .. protocol, 5, 55, 1)
+            gfx.clearScreen()
+            gfx.drawText("Protocol mismatch!", 5, 25, 1)
+            gfx.drawText("Expected: " .. locked_protocol, 5, 40, 1)
+            gfx.drawText("Got: " .. protocol, 5, 55, 1)
             return
         end
 
         pending_signal = { protocol = protocol, address = address, command = command }
         mode = "naming_signal"
 
-        clear_screen()
-        draw_text("Captured!", 10, 25, 1)
-        draw_text(protocol .. " 0x" .. string.format("%04X", address) .. " 0x" .. string.format("%02X", command), 5, 30, 1)
-        text_input_start("Name this button:", false)
-        text_input_draw()
+        gfx.clearScreen()
+        gfx.drawText("Captured!", 10, 25, 1)
+        gfx.drawText(protocol .. " 0x" .. string.format("%04X", address) .. " 0x" .. string.format("%02X", command), 5, 30, 1)
+        gfx.textInputStart("Name this button:", false)
+        gfx.textInputDraw()
     end
 end

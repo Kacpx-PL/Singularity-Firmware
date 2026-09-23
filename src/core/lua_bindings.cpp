@@ -159,26 +159,10 @@ static int l_get_imu(lua_State* L) {
     return 1;
 }
 
-void register_hardware_bindings(lua_State* L) {
-    lua_register(L, "config_set_theme_color", l_config_set_theme_color);
-    lua_register(L, "config_set_boot_delay", l_config_set_boot_delay);
-    lua_register(L, "gpio_read", l_gpio_read);
-    lua_register(L, "gpio_write", l_gpio_write);
-    lua_register(L, "ir_send_protocol",l_ir_send_protocol);
-    lua_register(L, "ir_receive_available", l_ir_receive_available);
-    lua_register(L, "ir_receive_get_result", l_ir_receive_get_result);
-    lua_register(L, "ir_receive_resume",l_ir_receive_resume);
-    lua_register(L, "serial_print",l_serial_print);
-    lua_register(L, "millis", l_millis);
-    lua_register(L, "ir_receive_get_address", l_ir_receive_get_address);
-    lua_register(L, "ir_receive_get_command", l_ir_receive_get_command);
-    lua_register(L, "ir_receive_get_protocol", l_ir_receive_get_protocol);
-    lua_register(L, "ir_send_raw", l_ir_send_raw);
-    lua_register(L, "key_is_pressed", l_key_is_pressed);
-    lua_register(L, "get_imu", l_get_imu);
-}
+    
 
-//Wifi Bindings
+
+// -----Wifi Bindings-------
 static int l_wifi_connect(lua_State* L) {
     const char* ssid = luaL_checkstring(L, 1);
     const char* pass = luaL_checkstring(L, 2);
@@ -285,24 +269,6 @@ static int l_wifi_scan_get(lua_State* L) {
     return 1;
 }
 
-void register_wifi_bindings(lua_State* L) {
-    lua_register(L, "wifi_connect", l_wifi_connect);
-    lua_register(L, "wifi_is_connected", l_wifi_is_connected);
-    lua_register(L, "wifi_get_ip", l_wifi_get_ip);
-    lua_register(L, "wifi_disconnect", l_wifi_disconnect);
-    lua_register(L, "wifi_get_rssi", l_wifi_get_rssi);
-    lua_register(L, "wifi_add_network", l_wifi_add_network);
-    lua_register(L, "wifi_set_autoconnect", l_wifi_set_autoconnect);
-    lua_register(L, "wifi_get_autoconnect", l_wifi_get_autoconnect);
-    lua_register(L, "wifi_get_ssid", l_wifi_get_ssid);
-    lua_register(L, "wifi_remove_network", l_wifi_remove_network);
-    lua_register(L, "wifi_get_network_count", l_wifi_get_network_count);
-    lua_register(L, "wifi_get_network_ssid", l_wifi_get_network_ssid);
-    lua_register(L, "wifi_scan_start", l_wifi_scan_start);
-    lua_register(L, "wifi_scan_status", l_wifi_scan_status);
-    lua_register(L, "wifi_scan_count", l_wifi_scan_count);
-    lua_register(L, "wifi_scan_get", l_wifi_scan_get);
-}
 
 static void push_byte_table(lua_State* L, const uint8_t* data, size_t length) {
     lua_createtable(L, (int)length, 0);
@@ -434,14 +400,6 @@ static int l_ble_parse_advertisement(lua_State* L) {
     return 1;
 }
 
-void register_ble_bindings(lua_State* L) {
-    lua_register(L, "ble_scan_start", l_ble_scan_start);
-    lua_register(L, "ble_scan_status", l_ble_scan_status);
-    lua_register(L, "ble_scan_count", l_ble_scan_count);
-    lua_register(L, "ble_scan_get", l_ble_scan_get);
-    lua_register(L, "ble_parse_advertisement", l_ble_parse_advertisement);
-}
-
 //UI Bindings
 static int l_draw_status_bar(lua_State* L) {
     status_bar_draw();
@@ -506,7 +464,7 @@ static int l_text_input_get_value(lua_State* L) {
 
 static int l_clear_screen(lua_State* L) {
     M5Cardputer.Display.fillRect(0, 20, 240, 115, 0x0);
-    return 1;
+    return 0;
 }
 
 static int l_draw_text(lua_State* L) {
@@ -519,7 +477,7 @@ static int l_draw_text(lua_State* L) {
     M5Cardputer.Display.setTextColor(color, BLACK);
     M5Cardputer.Display.setTextSize(size);
     M5Cardputer.Display.drawString(text, x, y);
-    return 1;
+    return 0;
 }
 
 static int l_set_color(lua_State* L) {
@@ -533,7 +491,7 @@ static int l_draw_rect_full(lua_State* L) {
     int w = luaL_checkinteger(L, 3);
     int h = luaL_checkinteger(L, 4);
     M5Cardputer.Display.fillRect(x, y, w, h,  g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_draw_rect(lua_State* L) {
@@ -542,7 +500,7 @@ static int l_draw_rect(lua_State* L) {
     int w = luaL_checkinteger(L, 3);
     int h = luaL_checkinteger(L, 4);
     M5Cardputer.Display.drawRect(x, y, w, h, g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_draw_line(lua_State* L) {
@@ -551,7 +509,7 @@ static int l_draw_line(lua_State* L) {
     int x1 = luaL_checkinteger(L, 3);
     int y1 = luaL_checkinteger(L, 4);
     M5Cardputer.Display.drawLine(x0, y0, x1, y1,  g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_draw_triangle(lua_State* L) {
@@ -562,7 +520,7 @@ static int l_draw_triangle(lua_State* L) {
     int x2 = luaL_checkinteger(L, 5);
     int y2 = luaL_checkinteger(L, 6);
     M5Cardputer.Display.drawTriangle(x0,y0,x1,y1,x2,y2,  g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_draw_triangle_full(lua_State* L) {
@@ -573,7 +531,7 @@ static int l_draw_triangle_full(lua_State* L) {
     int x2 = luaL_checkinteger(L, 5);
     int y2 = luaL_checkinteger(L, 6);
     M5Cardputer.Display.fillTriangle(x0,y0,x1,y1,x2,y2,  g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_draw_circle(lua_State* L) {
@@ -581,7 +539,7 @@ static int l_draw_circle(lua_State* L) {
     int y = luaL_checkinteger(L, 2);
     int r = luaL_checkinteger(L, 3);
     M5Cardputer.Display.drawCircle(x,y,r, g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_draw_circle_full(lua_State* L) {
@@ -589,7 +547,7 @@ static int l_draw_circle_full(lua_State* L) {
     int y = luaL_checkinteger(L, 2);
     int r = luaL_checkinteger(L, 3);
     M5Cardputer.Display.fillCircle(x,y,r, g_draw_color);
-    return 1;
+    return 0;
 }
 
 static int l_file_browser_start(lua_State* L) {
@@ -708,35 +666,138 @@ static int l_json_parse(lua_State* L) {
     return 1;
 }
 
-void register_http_bindings(lua_State* L) {
-    lua_register(L, "http_fetch", l_http_fetch);
-    lua_register(L, "json_parse", l_json_parse);
+static const luaL_Reg cnfig_lib[] = {
+    {"setThemeColor", l_config_set_theme_color},
+    {"setBootDelay", l_config_set_boot_delay},
+    {NULL, NULL}
+};
+
+static const luaL_Reg gpio_lib[] = {
+    {"read", l_gpio_read},
+    {"write", l_gpio_write},
+    {NULL, NULL}
+};
+
+static const luaL_Reg ir_lib[] = {
+    {"sendProtocol", l_ir_send_protocol},
+    {"sendRaw", l_ir_send_raw},
+    {"receiveAvbl", l_ir_receive_available},
+    {"receiveGetRes", l_ir_receive_get_result},
+    {"receiveResume", l_ir_receive_resume},
+    {"receiveGetAddress", l_ir_receive_get_address},
+    {"receiveGetCmd", l_ir_receive_get_command},
+    {"receiveGetProtocol", l_ir_receive_get_protocol},
+    {NULL, NULL}
+};
+
+static const luaL_Reg sys_lib[] = {
+    {"serialPrint", l_serial_print},
+    {"millis", l_millis},
+    {"keyPressed", l_key_is_pressed},
+    {"getImu", l_get_imu},
+    {NULL, NULL}
+};
+
+static const luaL_Reg wifi_lib[] = {
+    {"connect", l_wifi_connect},
+    {"connected", l_wifi_is_connected},
+    {"getIP", l_wifi_get_ip},
+    {"disconnect", l_wifi_disconnect},
+    {"getRssi", l_wifi_get_rssi},
+    {"addNetwork", l_wifi_add_network},
+    {"setAutoconnect", l_wifi_set_autoconnect},
+    {"getAutoconnect", l_wifi_get_autoconnect},
+    {"getSSID", l_wifi_get_ssid},
+    {"remNetwork", l_wifi_remove_network},
+    {"getNetworkCount", l_wifi_get_network_count},
+    {"getNetworkSSID", l_wifi_get_network_ssid},
+    {"scanStart", l_wifi_scan_start},
+    {"scanStatus", l_wifi_scan_status},
+    {"scanCount", l_wifi_scan_count},
+    {"scanGet", l_wifi_scan_get},
+    {NULL, NULL}
+};
+
+static const luaL_Reg ble_lib[] = {
+    {"scanStart", l_ble_scan_start},
+    {"scanStatus", l_ble_scan_status},
+    {"scanCount", l_ble_scan_count},
+    {"scanGet", l_ble_scan_get},
+    {"parseAdvert", l_ble_parse_advertisement},
+    {NULL, NULL}
+};
+
+static const luaL_Reg http_lib[] = {
+    {"fetch", l_http_fetch},
+    {"jsonParse", l_json_parse},
+    {NULL, NULL}
+};
+
+static const luaL_Reg gfx_lib[] = {
+    {"listClr", l_list_clear},
+    {"listAddItem", l_list_add_item},
+    {"listDraw", l_list_draw},
+    {"listHandleKey", l_list_handle_key},
+    {"listGetSelIndex", l_list_get_selected_index},
+    {"listGetSelText", l_list_get_selected_text},
+    {"drawStatusBar", l_draw_status_bar},
+    {"drawText", l_draw_text},
+    {"clearScreen", l_clear_screen},
+    {"setColor", l_set_color},
+    {"drawRect", l_draw_rect},
+    {"drawRectF", l_draw_rect_full},
+    {"drawLine", l_draw_line},
+    {"drawTri", l_draw_triangle},
+    {"drawTriF", l_draw_triangle_full},
+    {"drawCircle", l_draw_circle},
+    {"drawCircleF", l_draw_circle_full},
+    {"textInputStart", l_text_input_start},
+    {"textInputDraw", l_text_input_draw},
+    {"textInputHandleKey", l_text_input_handle_key},
+    {"textInputGetVal", l_text_input_get_value},
+    {"fileBrowserStart", l_file_browser_start},
+    {"fileBrowserDraw", l_file_browser_draw},
+    {"fileBrowserHandleKey", l_file_browser_handle_key},
+    {"fileBrowserGetSelectedPath", l_file_browser_get_selected_path},
+    {NULL, NULL}
+};
+
+void register_config_bindings(lua_State* L) {
+    luaL_newlib(L, cnfig_lib);
+    lua_setglobal(L, "cnfig");
 }
 
-void register_ui_bindings(lua_State* L) {
-    lua_register(L, "list_clear", l_list_clear);
-    lua_register(L, "list_add_item", l_list_add_item);
-    lua_register(L, "list_draw", l_list_draw);
-    lua_register(L, "list_handle_key", l_list_handle_key);
-    lua_register(L, "list_get_selected_index", l_list_get_selected_index);
-    lua_register(L, "list_get_selected_text", l_list_get_selected_text);
-    lua_register(L, "draw_status_bar", l_draw_status_bar);
-    lua_register(L, "draw_text", l_draw_text);
-    lua_register(L, "clear_screen", l_clear_screen);
-    lua_register(L, "draw_rect_full", l_draw_rect_full);
-    lua_register(L, "set_color", l_set_color);
-    lua_register(L, "draw_rect", l_draw_rect);
-    lua_register(L, "draw_line", l_draw_line);
-    lua_register(L, "draw_triangle", l_draw_triangle);
-    lua_register(L, "draw_triangle_full", l_draw_triangle_full);
-    lua_register(L, "draw_circle", l_draw_circle);
-    lua_register(L, "draw_circle_full", l_draw_circle_full);
-    lua_register(L, "text_input_start", l_text_input_start);
-    lua_register(L, "text_input_draw", l_text_input_draw);
-    lua_register(L, "text_input_handle_key", l_text_input_handle_key);
-    lua_register(L, "text_input_get_value", l_text_input_get_value);
-    lua_register(L, "file_browser_start", l_file_browser_start);
-    lua_register(L, "file_browser_draw", l_file_browser_draw);
-    lua_register(L, "file_browser_handle_key", l_file_browser_handle_key);
-    lua_register(L, "file_browser_get_selected_path", l_file_browser_get_selected_path);
+void register_gpio_bindings(lua_State* L) {
+    luaL_newlib(L, gpio_lib);
+    lua_setglobal(L, "gpio");
+}
+
+void register_ir_bindings(lua_State* L) {
+    luaL_newlib(L, ir_lib);
+    lua_setglobal(L, "ir");
+}
+
+void register_system_bindings(lua_State* L) {
+    luaL_newlib(L, sys_lib);
+    lua_setglobal(L, "sys");
+}
+
+void register_wifi_bindings(lua_State* L) {
+    luaL_newlib(L, wifi_lib);
+    lua_setglobal(L, "wifi");
+}
+
+void register_ble_bindings(lua_State* L) {
+    luaL_newlib(L, ble_lib);
+    lua_setglobal(L, "ble");
+}
+
+void register_http_bindings(lua_State* L) {
+    luaL_newlib(L, http_lib);
+    lua_setglobal(L, "http");
+}
+
+void registergfx_bindings(lua_State* L) {
+    luaL_newlib(L, gfx_lib);
+    lua_setglobal(L, "gfx");
 }

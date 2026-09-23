@@ -46,68 +46,68 @@ local function hex_bytes_to_int(hexstr)
     return value
 end
 
-file_browser_start("/singularity/system/ir_db", false)
+gfx.fileBrowserStart("/singularity/system/ir_db", false)
 
-clear_screen()
-file_browser_draw()
+gfx.clearScreen()
+gfx.fileBrowserDraw()
 
 function on_key(key)
     if mode == "browse" then
-        local result = file_browser_handle_key(key)
-        clear_screen()
-        file_browser_draw()
+        local result = gfx.fileBrowserHandleKey(key)
+        gfx.clearScreen()
+        gfx.fileBrowserDraw()
 
         if result == 1 then
-            local path = file_browser_get_selected_path()
+            local path = gfx.fileBrowserGetSelectedPath()
             local content = storage_read(path)
 
             if content == nil then
-                clear_screen()
-                draw_text("Failed to read file", 10, 25, 1)
+                gfx.clearScreen()
+                gfx.drawText("Failed to read file", 10, 25, 1)
             else
                 signals = parse_ir_file(content)
-				serial_print("Parsed signal count: " .. #signals)
+				sys.serialPrint("Parsed signal count: " .. #signals)
 				
-                list_clear()
+                gfx.listClr()
                 for _, sig in ipairs(signals) do
-                    list_add_item(sig.name)
+                    gfx.listAddItem(sig.name)
                 end
 
                 mode = "signals"
-                clear_screen()
-                draw_text("Select signal:", 10, 25, 2)
-                list_draw()
+                gfx.clearScreen()
+                gfx.drawText("Select signal:", 10, 25, 2)
+                gfx.listDraw()
             end
         end
 
     elseif mode == "signals" then
-        local result = list_handle_key(key)
-        clear_screen()
-        draw_text("Select signal:", 10, 25, 2)
-        list_draw()
+        local result = gfx.listHandleKey(key)
+        gfx.clearScreen()
+        gfx.drawText("Select signal:", 10, 25, 2)
+        gfx.listDraw()
 
         if key == 8 then -- \b is 8
             -- back out to file browser
             mode = "browse"
-            clear_screen()
-            file_browser_draw()
+            gfx.clearScreen()
+            gfx.fileBrowserDraw()
         elseif result ~= nil and result >= 0 then
             local sig = signals[result + 1]
 
             if sig.type == "raw" then
                 local data = parse_raw_data(sig.data)
                 local freq = tonumber(sig.frequency) or 38000
-                ir_send_raw(data, freq / 1000) -- convert Hz to kHz for sendRaw's expected units
+                ir.sendRaw(data, freq / 1000) -- convert Hz to kHz for sendRaw's expected units
             else
                 local address = hex_bytes_to_int(sig.address)
                 local command = hex_bytes_to_int(sig.command)
-                ir_send_protocol(sig.protocol, address, command)
+                ir.sendProtocol(sig.protocol, address, command)
             end
 
-            clear_screen()
-            draw_text("Select signal:", 10, 25, 2)
-            list_draw()
-            draw_text("Sent: " .. sig.name, 15, 45, 1)
+            gfx.clearScreen()
+            gfx.drawText("Select signal:", 10, 25, 2)
+            gfx.listDraw()
+            gfx.drawText("Sent: " .. sig.name, 15, 45, 1)
         end
     end
 end

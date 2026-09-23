@@ -2,5 +2,6 @@ return {
     type = "app",
     name = "IR Remote",
     icon = "icon_iricon",
-    entry = "main.lua"
+    entry = "main.lua",
+	priority = 1
 }
