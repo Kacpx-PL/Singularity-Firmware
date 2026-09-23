@@ -3,35 +3,35 @@ local devices = {}
 local last_status = "idle"
 
 local function show_header(text)
-    clear_screen()
-    draw_text("BLE Scan Test", 8, 25, 2)
-    draw_text(text, 8, 42, 1)
+    gfx.clearScreen()
+    gfx.drawText("BLE Scan Test", 8, 25, 2)
+    gfx.drawText(text, 8, 42, 1)
 end
 
 local function start_scan()
     devices = {}
-    last_status = ble_scan_status()
-    ble_scan_start(5, true)
+    last_status = ble.scanStatus()
+    ble.scanStart(5, true)
     mode = "scan"
     show_header("Scanning for 5 seconds...")
-    list_clear()
-    list_add_item("Rescan")
-    list_add_item("Please wait...")
-    list_draw()
+    gfx.listClr()
+    gfx.listAddItem("Rescan")
+    gfx.listAddItem("Please wait...")
+    gfx.listDraw()
 end
 
 local function show_results()
-    list_clear()
-    list_add_item("Rescan")
+    gfx.listClr()
+    gfx.listAddItem("Rescan")
     for i = 1, #devices do
         local device = devices[i]
         local name = device.name
         if name == "" then name = "<unnamed>" end
-        list_add_item(string.format("%s  %ddBm", name, device.rssi))
+        gfx.listAddItem(string.format("%s  %ddBm", name, device.rssi))
     end
-    if #devices == 0 then list_add_item("No BLE devices found") end
+    if #devices == 0 then gfx.listAddItem("No BLE devices found") end
     show_header(string.format("Found %d device(s)", #devices))
-    list_draw()
+    gfx.listDraw()
 end
 
 local function byte_count(bytes)
@@ -46,12 +46,12 @@ local function show_device(index)
     show_header("Device details")
     local name = device.name
     if name == "" then name = "<unnamed>" end
-    draw_text("Name: " .. name, 8, 58, 1)
-    draw_text("RSSI: " .. device.rssi .. " dBm", 8, 72, 1)
-    draw_text("Addr: " .. device.address, 8, 86, 1)
-    draw_text("Services: " .. #device.service_uuids, 8, 100, 1)
-    draw_text("Mfr bytes: " .. byte_count(device.manufacturer_data), 8, 114, 1)
-    draw_text("Payload: " .. byte_count(device.payload) .. " bytes", 8, 128, 1)
+    gfx.drawText("Name: " .. name, 8, 58, 1)
+    gfx.drawText("RSSI: " .. device.rssi .. " dBm", 8, 72, 1)
+    gfx.drawText("Addr: " .. device.address, 8, 86, 1)
+    gfx.drawText("Services: " .. #device.service_uuids, 8, 100, 1)
+    gfx.drawText("Mfr bytes: " .. byte_count(device.manufacturer_data), 8, 114, 1)
+    gfx.drawText("Payload: " .. byte_count(device.payload) .. " bytes", 8, 128, 1)
 end
 
 start_scan()
@@ -62,7 +62,7 @@ function on_key(key)
         return
     end
 
-    local result = list_handle_key(key)
+    local result = gfx.listHandleKey(key)
     if key == 8 then
         return
     end
@@ -73,26 +73,26 @@ function on_key(key)
             show_device(result)
         end
     else
-        list_draw()
+        gfx.listDraw()
     end
 end
 
 function update()
     if mode ~= "scan" then return end
-    local status = ble_scan_status()
+    local status = ble.scanStatus()
     if status ~= last_status then
         last_status = status
         if status == "complete" then
             devices = {}
-            for i = 0, ble_scan_count() - 1 do
-                table.insert(devices, ble_scan_get(i))
+            for i = 0, ble.scanCount() - 1 do
+                table.insert(devices, ble.scanGet(i))
             end
             show_results()
         elseif status == "unavailable" then
             show_header("BLE unavailable")
-            list_clear()
-            list_add_item("Rescan")
-            list_draw()
+            gfx.listClr()
+            gfx.listAddItem("Rescan")
+            gfx.listDraw()
         end
     end
 end

@@ -15,6 +15,7 @@
 #include "config.h"
 
 static std::vector<std::string> path_stack = { SG_APPS_DIR };
+static std::vector<std::string> name_stack = { "" };
 static std::vector<App> apps;
 static std::deque<std::string> app_string_storage;
 
@@ -63,13 +64,13 @@ static void scan_sd_apps(const char* base_path) {
             const char* name = app_string_storage.back().c_str();
             app_string_storage.emplace_back(full_dir + "/" + m.entry);
             const char* entry_path = app_string_storage.back().c_str();
-            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon)));
+            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon), m.priority));
         } else if (m.type == "folder") {
             app_string_storage.emplace_back(m.name);
             const char* name = app_string_storage.back().c_str();
             app_string_storage.emplace_back(full_dir);
             const char* folder_path = app_string_storage.back().c_str();
-            apps.push_back(make_folder_app(name, folder_path, icon_by_name(m.icon)));
+            apps.push_back(make_folder_app(name, folder_path, icon_by_name(m.icon), m.priority));
         }
     }
 }
@@ -81,15 +82,20 @@ static void rebuild_menu() {
 
     if (path_stack.size() == 1) {
         // only show core apps at the true root
-        apps.push_back(make_lua_app("WiFi", script_wifi, &icon_wifi));
-        apps.push_back(make_lua_app("Config", script_config, &icon_cog));
+        apps.push_back(make_lua_app("WiFi", script_wifi, &icon_wifi, 10));
+        apps.push_back(make_lua_app("Config", script_config, &icon_cog, 20));
     }
 
     scan_sd_apps(path_stack.back().c_str());
+
+    std::sort(apps.begin(), apps.end(), [](const App& a, const App& b) {
+        return a.priority < b.priority;
+    });
 }
 
-void menu_enter_folder(const char* path) {
+void menu_enter_folder(const char* path, const char* name) {
     path_stack.push_back(path);
+    name_stack.push_back(name);
     rebuild_menu();
     selected = 0;
     needs_redraw = true;
@@ -98,6 +104,7 @@ void menu_enter_folder(const char* path) {
 void menu_go_back() {
     if (path_stack.size() > 1) {
         path_stack.pop_back();
+        name_stack.pop_back();
         rebuild_menu();
         selected = 0;
         needs_redraw = true;
@@ -122,8 +129,7 @@ static void draw_arrow_right(int x, int y) {
     M5Cardputer.Display.fillTriangle(x, y, x - 15, y - 20, x - 15, y + 20, THEME_COLOR);
 }
 
-static void draw_menu() {
-    
+static void draw_menu() {    
 
     M5Cardputer.Display.fillScreen(BLACK);
     status_bar_draw();
@@ -131,6 +137,14 @@ static void draw_menu() {
     int screenW = M5Cardputer.Display.width();
     int screenH = M5Cardputer.Display.height();
     int centerY = STATUS_BAR_HEIGHT + (screenH - STATUS_BAR_HEIGHT) / 2;
+
+    if (name_stack.back() != "") {
+        draw_icon_scaled(18, 28, icon_folder8, 1.0f, THEME_COLOR); // adjust position to sit next to text
+        M5Cardputer.Display.setTextSize(1);
+        M5Cardputer.Display.setTextColor(THEME_COLOR, BLACK);
+        M5Cardputer.Display.setCursor(28, 24);
+        M5Cardputer.Display.print(name_stack.back().c_str());
+    }
 
     if (apps.empty()) {
         M5Cardputer.Display.setTextSize(1);
@@ -150,8 +164,8 @@ static void draw_menu() {
     //int iconX = (screenW - 40) / 2;
     //int iconY = centerY - 20;
     
-    int iconSize = 16; // your source icon size
-    float scale = 4.0f; // 16 * 4 = 64
+    int iconSize = 16; // source icon size
+    float scale = 4.0f;
     int iconCenterX = screenW / 2;
     int iconCenterY = centerY;
 
@@ -199,7 +213,7 @@ void menu_update(char key) {
                 // because on_open() might call rebuild_menu() which clears the apps vector!
                 bool is_folder = apps[selected].is_folder;
                 
-                apps[selected].on_open(apps[selected].data);
+                apps[selected].on_open(apps[selected].data, apps[selected].name);
                 status_bar_draw();
                 last_status_refresh = millis();
                 

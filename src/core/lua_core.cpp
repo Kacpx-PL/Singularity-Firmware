@@ -2,6 +2,7 @@
 #include "lua_bindings.h"
 #include "../modules/ble/ble_service.h"
 #include "../modules/wifi/wifi.h"
+#include "../modules/http/http_service.h"
 
 extern "C" {
     #include "lua.h"
@@ -15,6 +16,7 @@ extern "C" {
 
 static lua_State* L;
 static const char* LUA_PROTECTED_GLOBALS = "singularity.protected_globals";
+static constexpr size_t LUA_APP_MAX_FILE_SIZE = 32 * 1024;
 
 
 static int l_print_screen(lua_State* L) {
@@ -43,11 +45,16 @@ void lua_core_init() {
     luaL_openlibs(L); // for now, open everything
 
     lua_register(L, "print_screen", l_print_screen);
+    register_config_bindings(L);
+    register_gpio_bindings(L);
+    register_ir_bindings(L);
+    register_system_bindings(L);
     register_wifi_bindings(L);
     register_ble_bindings(L);
-    register_storage_bindings(L);
-    register_ui_bindings(L);
-    register_hardware_bindings(L);
+    register_http_bindings(L);
+    registergfx_bindings(L);
+
+    register_storage_bindings(L); // defined here
 
     lua_newtable(L);
     int protected_globals = lua_gettop(L);
@@ -69,6 +76,7 @@ void lua_core_reset_app() {
     uint32_t before = ESP.getFreeHeap();
     wifi_scan_cancel();
     ble_scan_cancel();
+    http_cleanup();
     if (L) {
         lua_pushglobaltable(L);
         int globals = lua_gettop(L);
@@ -103,13 +111,13 @@ void lua_core_run_string(const char* script) {
 }
 
 void lua_core_run_file(const char* path) {
-    char* buf = (char*)malloc(8192);
+    char* buf = (char*)malloc(LUA_APP_MAX_FILE_SIZE + 1);
     if (!buf) {
         Serial.println("Failed to allocate buffer for script file");
         return;
     }
 
-    if (!storage_read(path, buf, 8192)) {
+    if (!storage_read(path, buf, LUA_APP_MAX_FILE_SIZE + 1)) {
         Serial.println("Failed to read script file");
         free(buf);
         return;
@@ -242,6 +250,13 @@ LuaManifest lua_core_load_manifest(const char* script) {
 
     lua_getfield(L, -1, "entry");
     if (lua_isstring(L, -1)) m.entry = lua_tostring(L, -1);
+    lua_pop(L, 1);
+
+    m.priority = 100;
+    lua_getfield(L, -1, "priority");
+    if (lua_isnumber(L, -1)) {
+        m.priority = (int)lua_tointeger(L, -1);
+    }
     lua_pop(L, 1);
 
     lua_pop(L, 1); // pop the table itself

@@ -12,7 +12,6 @@
 
 void setup() {
     Serial.begin(115200);
-
     auto cfg = M5.config();
     M5Cardputer.begin(cfg);
 
@@ -32,7 +31,7 @@ void setup() {
 
     ir_init();
 
-    lua_core_run_string("math.randomseed(millis())");
+    lua_core_run_string("math.randomseed(sys.millis())");
 
     boot_screen();
 

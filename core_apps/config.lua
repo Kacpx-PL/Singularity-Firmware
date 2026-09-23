@@ -10,15 +10,15 @@ local SG_BOOT_DELAY_MIN = 1000  --setting this below 1000 will not change anythi
 local SG_BOOT_DELAY_MAX = 10000 --setting this above 10000 will not change anything.
 
 function refresh_list()
-    list_clear()
-    list_add_item("Set Theme Color (hex)")
-    list_add_item("Set Boot Time (ms)")
+    gfx.listClr()
+    gfx.listAddItem("Set Theme Color (hex)")
+    gfx.listAddItem("Set Boot Time (ms)")
 end
 
-clear_screen()
-draw_text("System Settings", 10, 40, 2)
+gfx.clearScreen()
+gfx.drawText("System Settings", 10, 40, 2)
 refresh_list()
-list_draw()
+gfx.listDraw()
 
 function math.clamp(x, min, max)
     return math.min(math.max(x, min), max)
@@ -47,47 +47,47 @@ end
 
 function on_key(key)
     if mode == "list" then
-        local result = list_handle_key(key)
-        clear_screen()
-        draw_text("System Settings", 10, 40, 2)
-        list_draw()
+        local result = gfx.listHandleKey(key)
+        gfx.clearScreen()
+        gfx.drawText("System Settings", 10, 40, 2)
+        gfx.listDraw()
 
         if result == 0 then
-            mode = "set_color"
-            clear_screen()
-            text_input_start("Hex color (e.g. FF6600):", false)
-            text_input_draw()
+            mode = "gfx.setColor"
+            gfx.clearScreen()
+            gfx.textInputStart("Hex color (e.g. FF6600):", false)
+            gfx.textInputDraw()
         
         elseif result == 1 then
             mode = "set_delay"
-            clear_screen()
-            text_input_start("Boot Time (e.g. 3000):", false)
-            text_input_draw()
+            gfx.clearScreen()
+            gfx.textInputStart("Boot Time (e.g. 3000):", false)
+            gfx.textInputDraw()
         end
 
-    elseif mode == "set_color" then
-        local r = text_input_handle_key(key)
+    elseif mode == "gfx.setColor" then
+        local r = gfx.textInputHandleKey(key)
 
         if r == 2 then
             -- cancelled (backspace on empty)
             mode = "list"
-            clear_screen()
-            draw_text("System Settings", 10, 40, 2)
+            gfx.clearScreen()
+            gfx.drawText("System Settings", 10, 40, 2)
             refresh_list()
-            list_draw()
+            gfx.listDraw()
         else
-            text_input_draw()
+            gfx.textInputDraw()
             if r == 1 then
-                local hex_value = text_input_get_value()
+                local hex_value = gfx.textInputGetVal()
                 local rgb565 = hex_to_rgb565(hex_value)
 
-                clear_screen()
+                gfx.clearScreen()
                 if rgb565 == nil then
-                    draw_text("Invalid hex color!", 10, 40, 1)
+                    gfx.drawText("Invalid hex color!", 10, 40, 1)
                 else
-                    config_set_theme_color(rgb565)
-                    draw_text("Theme updated!", 10, 30, 2)
-                    draw_text("Value: 0x" .. string.format("%04X", rgb565), 10, 55, 1)
+                    cnfig.setThemeColor(rgb565)
+                    gfx.drawText("Theme updated!", 10, 30, 2)
+                    gfx.drawText("Value: 0x" .. string.format("%04X", rgb565), 10, 55, 1)
                 end
 
                 mode = "list"
@@ -95,28 +95,28 @@ function on_key(key)
         end
 
     elseif mode == "set_delay" then
-        local r = text_input_handle_key(key)
+        local r = gfx.textInputHandleKey(key)
 
         if r == 2 then
             -- cancelled (backspace on empty)
             mode = "list"
-            clear_screen()
-            draw_text("System Settings", 10, 40, 2)
+            gfx.clearScreen()
+            gfx.drawText("System Settings", 10, 40, 2)
             refresh_list()
-            list_draw()
+            gfx.listDraw()
         else
-            text_input_draw()
+            gfx.textInputDraw()
             if r == 1 then
-                local raw_value = tonumber(text_input_get_value())
+                local raw_value = tonumber(gfx.textInputGetVal())
 
-                clear_screen()
+                gfx.clearScreen()
                 if raw_value == nil then
-                    draw_text("Invalid number!", 10, 40, 1)
+                    gfx.drawText("Invalid number!", 10, 40, 1)
                 else
                     local boot_delay = math.clamp(raw_value, SG_BOOT_DELAY_MIN, SG_BOOT_DELAY_MAX)
-                    config_set_boot_delay(boot_delay)
-                    draw_text("Boot time updated!", 10, 30, 2)
-                    draw_text("Time: " .. boot_delay .. "ms", 10, 55, 1)
+                    cnfig.setBootDelay(boot_delay)
+                    gfx.drawText("Boot time updated!", 10, 30, 2)
+                    gfx.drawText("Time: " .. boot_delay .. "ms", 10, 55, 1)
                 end
 
                 mode = "list"
