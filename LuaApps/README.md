@@ -95,6 +95,43 @@ end
 
 Each Wi-Fi result contains `ssid`, `bssid`, `rssi`, `channel`, and numeric `encryption` fields.
 
+### Http/Json
+
+Note : http fetching is blocking it will block all draw calls untill the fetch succeeds/fails\
+before calling its worth adding a screen eg "Loading..."
+
+```
+http.fetch(url)
+http.jsonParse(jsonstring)
+```
+``http.fetch`` returns 2 values result, err                 -- result, error
+``http.jsonParse `` also returns 2 values lua_table, err    -- result, error
+
+Example usage :
+```
+local res, err = http.fetch("https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current=temperature_2m") -- berlin
+
+if err then
+    sys.serialPrint("httperr")
+    return
+end
+
+local jres, jerr = http.jsonParse(res)
+
+if jerr then
+    sys.serialPrint("jsonerr")
+    return
+end
+
+if not jres or not jres.current then
+    sys.serialPrint("apierr")
+    return
+end
+
+gfx.clearScreen()
+gfx.drawText(tostring(jres.current.temperature_2m), 10, 30)
+```
+
 ### BLE scanning
 
 BLE scanning is also asynchronous and uses the framework's bundled ESP32 BLE library. The optional duration is in seconds and active scanning is enabled by default.
