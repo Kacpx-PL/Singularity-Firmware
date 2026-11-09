@@ -51,6 +51,7 @@ void lua_core_init() {
     register_system_bindings(L);
     register_wifi_bindings(L);
     register_ble_bindings(L);
+    register_espnow_bindings(L);
     register_http_bindings(L);
     registergfx_bindings(L);
 

@@ -9,6 +9,7 @@
 #include "core/paths.h"
 #include "core/config.h"
 #include "modules/ir/ir_service.h"
+#include "modules/espnow/espnow_service.h"
 
 void setup() {
     Serial.begin(115200);
@@ -26,6 +27,10 @@ void setup() {
     }
 
     lua_core_init();
+
+    if (!espnow_init()) {
+        Serial.println("ESP-NOW init failed");
+    }
 
     config_load();
 

@@ -6,7 +6,7 @@ For file structure see `sd_files`.
 
 # Lua API Reference
 
-Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `ir`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
+Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `espnow`, `ir`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
 
 ## App Lifecycle
 
@@ -94,6 +94,20 @@ end
 ```
 
 Each Wi-Fi result contains `ssid`, `bssid`, `rssi`, `channel`, and numeric `encryption` fields.
+
+### ESP-NOW
+
+ESP-NOW is initialized at boot. Add a peer before sending; MAC addresses use `AA:BB:CC:DD:EE:FF` format. `receive()` returns the latest received `{mac, data}` packet, or `nil`.
+
+```lua
+espnow.addPeer("AA:BB:CC:DD:EE:FF")
+espnow.send("AA:BB:CC:DD:EE:FF", "hello")
+
+local packet = espnow.receive()
+if packet then
+    sys.serialPrint(packet.mac .. ": " .. packet.data)
+end
+```
 
 ### Http/Json
 

@@ -6,6 +6,7 @@
 #include "M5Cardputer.h"
 #include "../modules/wifi/wifi.h"
 #include "../modules/ble/ble_service.h"
+#include "../modules/espnow/espnow_service.h"
 #include "../modules/ui/ui_list.h"
 #include "../modules/ui/ui_text_input.h"
 #include "../modules/ui/ui_file_browser.h"
@@ -17,6 +18,10 @@ extern "C" {
 }
 
 #include <ArduinoJson.h>
+#include <esp_now.h>
+#include <freertos/FreeRTOS.h>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -596,6 +601,91 @@ void lua_push_json_value(lua_State* L, JsonVariantConst v) {
     }
 }
 
+static portMUX_TYPE espnow_rx_mux = portMUX_INITIALIZER_UNLOCKED;
+static bool espnow_rx_available = false;
+static uint8_t espnow_rx_mac[6];
+static uint8_t espnow_rx_data[ESP_NOW_MAX_DATA_LEN];
+static int espnow_rx_length = 0;
+
+static void l_espnow_on_receive(const uint8_t* mac, const uint8_t* data, int length) {
+    if (!mac || !data || length < 0 || length > ESP_NOW_MAX_DATA_LEN) return;
+
+    portENTER_CRITICAL(&espnow_rx_mux);
+    std::memcpy(espnow_rx_mac, mac, sizeof(espnow_rx_mac));
+    std::memcpy(espnow_rx_data, data, length);
+    espnow_rx_length = length;
+    espnow_rx_available = true;
+    portEXIT_CRITICAL(&espnow_rx_mux);
+}
+
+static bool l_espnow_parse_mac(lua_State* L, int index, uint8_t* mac) {
+    size_t length = 0;
+    const char* text = luaL_checklstring(L, index, &length);
+    unsigned int bytes[6];
+    int consumed = 0;
+    if (length != 17 ||
+        std::sscanf(text, "%2x:%2x:%2x:%2x:%2x:%2x%n",
+                    &bytes[0], &bytes[1], &bytes[2], &bytes[3], &bytes[4], &bytes[5],
+                    &consumed) != 6 ||
+        consumed != 17) {
+        luaL_argerror(L, index, "MAC address must use the format AA:BB:CC:DD:EE:FF");
+        return false;
+    }
+
+    for (size_t i = 0; i < 6; i++) {
+        if (bytes[i] > 0xFF) {
+            luaL_argerror(L, index, "invalid MAC address");
+            return false;
+        }
+        mac[i] = static_cast<uint8_t>(bytes[i]);
+    }
+    return true;
+}
+
+static int l_espnow_add_peer(lua_State* L) {
+    uint8_t mac[6];
+    l_espnow_parse_mac(L, 1, mac);
+    lua_pushboolean(L, espnow_add_peer(mac));
+    return 1;
+}
+
+static int l_espnow_send(lua_State* L) {
+    uint8_t mac[6];
+    l_espnow_parse_mac(L, 1, mac);
+    size_t length = 0;
+    const char* data = luaL_checklstring(L, 2, &length);
+    lua_pushboolean(L, espnow_send(mac, reinterpret_cast<const uint8_t*>(data), length));
+    return 1;
+}
+
+static int l_espnow_receive(lua_State* L) {
+    uint8_t mac[6];
+    uint8_t data[ESP_NOW_MAX_DATA_LEN];
+    int length;
+
+    portENTER_CRITICAL(&espnow_rx_mux);
+    if (!espnow_rx_available) {
+        portEXIT_CRITICAL(&espnow_rx_mux);
+        lua_pushnil(L);
+        return 1;
+    }
+    std::memcpy(mac, espnow_rx_mac, sizeof(mac));
+    length = espnow_rx_length;
+    std::memcpy(data, espnow_rx_data, length);
+    espnow_rx_available = false;
+    portEXIT_CRITICAL(&espnow_rx_mux);
+
+    char mac_text[18];
+    std::snprintf(mac_text, sizeof(mac_text), "%02X:%02X:%02X:%02X:%02X:%02X",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, mac_text);
+    lua_setfield(L, -2, "mac");
+    lua_pushlstring(L, reinterpret_cast<const char*>(data), length);
+    lua_setfield(L, -2, "data");
+    return 1;
+}
+
 static int l_http_fetch(lua_State* L) {
     const char* url = luaL_checkstring(L, 1);
     int timeout_ms = luaL_optinteger(L, 2, 10000);
@@ -727,6 +817,13 @@ static const luaL_Reg ble_lib[] = {
     {NULL, NULL}
 };
 
+static const luaL_Reg espnow_lib[] = {
+    {"addPeer", l_espnow_add_peer},
+    {"send", l_espnow_send},
+    {"receive", l_espnow_receive},
+    {NULL, NULL}
+};
+
 static const luaL_Reg http_lib[] = {
     {"fetch", l_http_fetch},
     {"jsonParse", l_json_parse},
@@ -790,6 +887,12 @@ void register_wifi_bindings(lua_State* L) {
 void register_ble_bindings(lua_State* L) {
     luaL_newlib(L, ble_lib);
     lua_setglobal(L, "ble");
+}
+
+void register_espnow_bindings(lua_State* L) {
+    espnow_set_receive_callback(l_espnow_on_receive);
+    luaL_newlib(L, espnow_lib);
+    lua_setglobal(L, "espnow");
 }
 
 void register_http_bindings(lua_State* L) {
