@@ -109,6 +109,7 @@ void lua_core_run_string(const char* script) {
 
         show_lua_error(err);
     }
+    lua_settop(L, 0); // drop the error message / any return values
 }
 
 void lua_core_run_file(const char* path) {
@@ -137,6 +138,7 @@ void lua_core_run_test() {
 
         show_lua_error(err);
     }
+    lua_settop(L, 0);
 }
 
 void lua_core_call_update() {
@@ -147,6 +149,7 @@ void lua_core_call_update() {
             Serial.println(err);
 
             show_lua_error(err);
+            lua_pop(L, 1); // pop the error message, otherwise the stack grows every frame
         }
     } else {
         lua_pop(L, 1); // clean up the non-function value pushed by lua_getglobal
@@ -160,6 +163,7 @@ void lua_core_call_on_key(char key) {
         if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
             const char* err = lua_tostring(L, -1);
             Serial.println(err);
+            lua_pop(L, 1); // pop the error message
         }
     } else {
         lua_pop(L, 1);
@@ -175,19 +179,17 @@ static int l_storage_read(lua_State* L) {
         return 1;
     }
 
-    char* buf = (char*)malloc(size + 1);
-    if (!buf) {
-        lua_pushnil(L);
-        return 1;
-    }
+    // Use a Lua-managed buffer instead of malloc/free: if Lua raises an error
+    // (e.g. out of memory) it longjmps past this function, which would leak a
+    // malloc'd buffer. luaL_Buffer memory is owned by the GC.
+    luaL_Buffer b;
+    char* buf = luaL_buffinitsize(L, &b, size + 1);
 
     if (storage_read(path, buf, size + 1)) {
-        lua_pushstring(L, buf);
+        luaL_pushresultsize(&b, strlen(buf));
     } else {
         lua_pushnil(L);
     }
-
-    free(buf);
     return 1;
 }
 

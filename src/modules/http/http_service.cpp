@@ -7,23 +7,32 @@
 
 namespace {
 
+// Owns every heap object created for one request. Everything is released
+// in one place (http_release_context) so no code path can leak or double free.
 struct HttpContext {
     HTTPClient* client = nullptr;
     WiFiClientSecure* secure_client = nullptr;
+    WiFiClient* plain_client = nullptr;
     bool active = false;
 };
 
 static HttpContext g_http_context;
 
 void http_release_context() {
-    if (g_http_context.secure_client) {
-        delete g_http_context.secure_client;
-        g_http_context.secure_client = nullptr;
-    }
+    // HTTPClient::end() touches the underlying transport, so it must run
+    // BEFORE the transport object is deleted.
     if (g_http_context.client) {
         g_http_context.client->end();
         delete g_http_context.client;
         g_http_context.client = nullptr;
+    }
+    if (g_http_context.secure_client) {
+        delete g_http_context.secure_client;
+        g_http_context.secure_client = nullptr;
+    }
+    if (g_http_context.plain_client) {
+        delete g_http_context.plain_client;
+        g_http_context.plain_client = nullptr;
     }
     g_http_context.active = false;
 }
@@ -52,14 +61,14 @@ HttpResponse http_fetch(const char* url, int timeout_ms) {
         return response;
     }
 
-    HTTPClient* client = new (std::nothrow) HTTPClient();
-    if (!client) {
+    g_http_context.client = new (std::nothrow) HTTPClient();
+    if (!g_http_context.client) {
         response.error = "out of memory";
+        http_release_context();
         return response;
     }
-
-    g_http_context.client = client;
     g_http_context.active = true;
+    HTTPClient* client = g_http_context.client;
 
     client->setTimeout(timeout_ms);
     client->setConnectTimeout(timeout_ms);
@@ -67,23 +76,22 @@ HttpResponse http_fetch(const char* url, int timeout_ms) {
 
     bool begin_ok = false;
     if (use_https) {
-        WiFiClientSecure* secure_client = new (std::nothrow) WiFiClientSecure();
-        if (!secure_client) {
-            delete client;
+        g_http_context.secure_client = new (std::nothrow) WiFiClientSecure();
+         if (!g_http_context.secure_client) {
             response.error = "out of memory";
+            http_release_context();
             return response;
         }
-        secure_client->setInsecure();
-        g_http_context.secure_client = secure_client;
-        begin_ok = client->begin(*secure_client, url);
+        g_http_context.secure_client->setInsecure();
+        begin_ok = client->begin(*g_http_context.secure_client, url);
     } else {
-        WiFiClient* plain_client = new (std::nothrow) WiFiClient();
-        if (!plain_client) {
-            delete client;
+        g_http_context.plain_client = new (std::nothrow) WiFiClient();
+        if (!g_http_context.plain_client) {
             response.error = "out of memory";
+            http_release_context();
             return response;
         }
-        begin_ok = client->begin(*plain_client, url);
+        begin_ok = client->begin(*g_http_context.plain_client, url);
     }
 
     if (!begin_ok) {

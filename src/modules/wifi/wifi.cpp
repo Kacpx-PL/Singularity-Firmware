@@ -211,8 +211,9 @@ bool wifi_scan_start(bool show_hidden) {
 }
 
 void wifi_scan_cancel() {
-    if (!lua_scan_active) return;
-    WiFi.scanDelete();
+    // Always release results, even if the scan already completed; otherwise
+    // the vector's memory stays allocated after the app that scanned has closed.
+    if (lua_scan_active) WiFi.scanDelete();
     lua_scan_active = false;
     lua_scan_complete = false;
     lua_scan_results.clear();

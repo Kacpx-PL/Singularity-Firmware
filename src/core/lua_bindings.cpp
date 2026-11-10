@@ -360,7 +360,9 @@ static int l_ble_parse_advertisement(lua_State* L) {
     size_t length = lua_rawlen(L, 1);
     if (length > 255) return luaL_error(L, "advertisement payload is limited to 255 bytes");
 
-    std::vector<uint8_t> data(length);
+    // Fixed stack buffer (max 255 bytes): luaL_error/luaL_checkinteger longjmp
+    // and would skip a std::vector destructor, leaking its heap block.
+    uint8_t data[255];
     for (size_t i = 0; i < length; i++) {
         lua_rawgeti(L, 1, (int)i + 1);
         lua_Integer byte = luaL_checkinteger(L, -1);
@@ -369,7 +371,7 @@ static int l_ble_parse_advertisement(lua_State* L) {
         data[i] = (uint8_t)byte;
     }
 
-    std::vector<BleAdField> fields = ble_parse_advertisement(data.data(), data.size());
+    std::vector<BleAdField> fields = ble_parse_advertisement(data, length);
     lua_createtable(L, (int)fields.size(), 0);
     for (size_t i = 0; i < fields.size(); i++) {
         const BleAdField& field = fields[i];
