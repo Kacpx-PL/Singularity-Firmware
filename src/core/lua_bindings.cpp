@@ -1,4 +1,5 @@
 #include "lua_bindings.h"
+#include "lua_core.h"
 #include "status_bar.h"
 #include "config.h"
 #include "pins.h"
@@ -172,6 +173,7 @@ static int l_wifi_connect(lua_State* L) {
     const char* ssid = luaL_checkstring(L, 1);
     const char* pass = luaL_checkstring(L, 2);
     bool ok = wifi_connect(ssid, pass);
+    lua_core_watchdog_kick(); // time spent blocking on the network doesn't count against the script
     lua_pushboolean(L, ok);
     return 1;
 }
@@ -693,6 +695,7 @@ static int l_http_fetch(lua_State* L) {
     int timeout_ms = luaL_optinteger(L, 2, 10000);
 
     HttpResponse response = http_fetch(url, timeout_ms);
+    lua_core_watchdog_kick(); // blocking network time doesn't count against the script
     lua_createtable(L, 0, 4);
 
     lua_pushinteger(L, response.status_code);

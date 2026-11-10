@@ -15,6 +15,11 @@ static void lua_app_open_from_file(const char* path, const char* name) {
 }
 
 static void lua_app_loop(const char* data) {
+    if (!lua_core_app_faulted() && lua_core_heap_critical()) {
+        // Something outside the Lua allocator (http body, BLE, JSON...) ate the heap.
+        lua_core_kill_app("Low memory: app killed");
+        return;
+    }
     lua_core_call_update();
 }
 

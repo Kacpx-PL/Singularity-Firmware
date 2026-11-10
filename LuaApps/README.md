@@ -281,3 +281,6 @@ serial_print("debug message")   -- prints to the USB serial console
 - If something is missing check lua_bindings.cpp (some bindings are redundant)
 - Max script file size is 32KB while 160KB is mostly free for modules/values
 - minimize redrawing the elements, only draw the delta between frames if possible
+- **Resource limits:** each app may use about 96KB of Lua memory. Exceeding it (or dropping the device's free heap below ~16KB) kills the app with an "Out of memory" screen and frees everything
+- **Watchdog:** a single call (app start, `update()`, `on_key()`) that runs longer than 3 seconds is killed, so `while true do` no longer hangs the device. Time spent inside `http.fetch` / `wifi.connect` does not count. Press ESC after a kill to return to the menu
+- An uncaught error in the app's top-level code or in `update()` also stops the app and shows the error until you press ESC

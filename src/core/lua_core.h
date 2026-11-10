@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <string>
 #include "../modules/wifi/wifi.h"
 
@@ -33,6 +34,13 @@ void lua_core_run_string(const char* script);
 void lua_core_run_file(const char* path);
 void lua_core_call_update();
 void lua_core_call_on_key(char key);
+
+// Resource protection (memory cap, low-heap kill, watchdog)
+void lua_core_watchdog_kick();               // call after blocking C calls (http, wifi.connect)
+bool lua_core_heap_critical();               // free heap below the kill threshold
+void lua_core_kill_app(const char* reason);  // reset app state now and halt it until ESC
+bool lua_core_app_faulted();
+size_t lua_core_mem_used();                  // bytes currently allocated by the Lua state
 LuaConfig lua_core_load_config(const char* script);
 LuaManifest lua_core_load_manifest(const char* script);
 WifiConfig lua_core_load_wifi_config(const char* script);

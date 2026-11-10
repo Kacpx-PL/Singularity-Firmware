@@ -5,3 +5,5 @@
 .vscode/ipch
 core_apps/generated/
 FirmwareBuilds
+build.log
+build_check.sh

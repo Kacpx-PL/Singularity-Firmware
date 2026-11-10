@@ -18,6 +18,106 @@ static lua_State* L;
 static const char* LUA_PROTECTED_GLOBALS = "singularity.protected_globals";
 static constexpr size_t LUA_APP_MAX_FILE_SIZE = 32 * 1024;
 
+// ---------------------------------------------------------------------------
+// Resource limits: memory cap ("OOM killer"), low-heap guard and watchdog
+// ---------------------------------------------------------------------------
+#define SG_APP_MEM_BUDGET   (96 * 1024)  // Lua heap an app may use on top of the base state
+#define SG_HEAP_RESERVE     (24 * 1024)  // Lua refuses to grow if free heap would drop below this
+#define SG_HEAP_CRITICAL    (16 * 1024)  // free heap below this while an app runs => app is killed
+#define SG_WATCHDOG_MS      3000         // max time one script call (open/update/on_key) may run
+#define SG_WATCHDOG_STEP    2000         // VM instructions between watchdog checks
+
+static size_t g_mem_used = 0;
+static size_t g_mem_limit = 0;        // 0 = unlimited (while the base state is being built)
+static bool g_app_faulted = false;    // true once an app was halted/killed; loop+keys are ignored
+static bool g_wd_enabled = false;
+static bool g_wd_tripped = false;
+static unsigned long g_wd_start = 0;
+
+// Lua allocator with accounting. Returning NULL on growth makes Lua run an
+// emergency GC and then raise LUA_ERRMEM, which the pcall wrappers turn into a kill.
+static void* sg_alloc(void*, void* ptr, size_t osize, size_t nsize) {
+    size_t old = ptr ? osize : 0;   // when ptr is NULL, osize is a type tag, not a size
+    if (nsize == 0) {
+        if (ptr) {
+            g_mem_used -= old;
+            free(ptr);
+        }
+        return nullptr;
+    }
+    if (nsize > old && g_mem_limit) {
+        size_t grow = nsize - old;
+        if (g_mem_used + grow > g_mem_limit) return nullptr;
+        if (grow >= 256 && ESP.getFreeHeap() < SG_HEAP_RESERVE + grow) return nullptr;
+    }
+    void* p = realloc(ptr, nsize);
+    if (p) g_mem_used = g_mem_used - old + nsize;
+    return p;
+}
+
+static int sg_panic(lua_State* La) {
+    const char* msg = lua_tostring(La, -1);
+    Serial.printf("[LUA] PANIC: %s - restarting\n", msg ? msg : "?");
+    Serial.flush();
+    delay(100);
+    ESP.restart();
+    return 0;
+}
+
+static void wd_hook(lua_State* La, lua_Debug*) {
+    if (!g_wd_enabled) return;
+    if (!g_wd_tripped && millis() - g_wd_start <= SG_WATCHDOG_MS) return;
+    if (!g_wd_tripped) {
+        g_wd_tripped = true;
+        // From now on fail on EVERY instruction so a script can't swallow the
+        // error with pcall and keep looping.
+        lua_sethook(La, wd_hook, LUA_MASKCOUNT, 1);
+    }
+    luaL_error(La, "watchdog: script ran longer than %d ms", SG_WATCHDOG_MS);
+}
+
+static void wd_set_hook() {
+    lua_sethook(L, wd_hook, LUA_MASKCOUNT, SG_WATCHDOG_STEP);
+}
+
+static void wd_begin() {
+    g_wd_start = millis();
+    g_wd_tripped = false;
+    g_wd_enabled = true;
+}
+
+static void wd_end() {
+    g_wd_enabled = false;
+    if (g_wd_tripped) {
+        g_wd_tripped = false;
+        wd_set_hook(); // restore the normal check interval
+    }
+}
+
+// RAII guard for the config/manifest loaders (many early returns).
+struct WdScope {
+    WdScope() { wd_begin(); }
+    ~WdScope() { wd_end(); }
+};
+
+// Blocking bindings (http.fetch, wifi.connect) call this when they return so
+// time spent waiting on the network doesn't count against the script.
+void lua_core_watchdog_kick() {
+    g_wd_start = millis();
+}
+
+bool lua_core_heap_critical() {
+    return ESP.getFreeHeap() < SG_HEAP_CRITICAL;
+}
+
+bool lua_core_app_faulted() {
+    return g_app_faulted;
+}
+
+size_t lua_core_mem_used() {
+    return g_mem_used;
+}
+
 
 static int l_print_screen(lua_State* L) {
     const char* text = luaL_checkstring(L, 1);
@@ -31,17 +131,66 @@ static int l_print_screen(lua_State* L) {
     return 0;
 }
 
-static void show_lua_error(const char* err) {
+static void show_lua_error(const char* err, bool halted = false) {
     Serial.println(err);
     M5Cardputer.Display.fillScreen(BLACK);
     M5Cardputer.Display.setTextSize(1);
     M5Cardputer.Display.setTextColor(RED);
     M5Cardputer.Display.setCursor(5, 25);
     M5Cardputer.Display.print(err);
+    if (halted) {
+        M5Cardputer.Display.setTextColor(WHITE);
+        M5Cardputer.Display.print("\n\n[app stopped - press ESC]");
+    }
+}
+
+// Call right after a guarded lua_pcall. Handles errors, OOM and watchdog trips.
+//   halt_on_error: a plain runtime error also stops the app (used for open/update)
+// OOM and watchdog trips ALWAYS kill the app: its memory is reclaimed immediately.
+static void finish_call(int status, bool halt_on_error) {
+    bool wd = g_wd_tripped;   // read before wd_end() clears it
+    wd_end();
+
+    if (status == LUA_OK && !wd) {
+        lua_settop(L, 0);
+        return;
+    }
+
+    std::string msg;
+    if (status != LUA_OK) {
+        const char* e = lua_tostring(L, -1);
+        msg = e ? e : "unknown error";
+    } else {
+        msg = "watchdog: script ignored timeout"; // script swallowed the error with pcall
+    }
+    if (status == LUA_ERRMEM) {
+        msg = "Out of memory: app killed";
+    }
+    lua_settop(L, 0);
+
+    bool kill = wd || status == LUA_ERRMEM;
+    if (kill) lua_core_reset_app();   // reclaim everything right now
+    if (kill || halt_on_error) {
+        g_app_faulted = true;
+        show_lua_error(msg.c_str(), true);
+    } else {
+        Serial.println(msg.c_str());
+    }
+}
+
+void lua_core_kill_app(const char* reason) {
+    lua_core_reset_app();
+    g_app_faulted = true;
+    show_lua_error(reason, true);
 }
 
 void lua_core_init() {
-    L = luaL_newstate();
+    L = lua_newstate(sg_alloc, nullptr, luaL_makeseed(nullptr));   // accounted allocator instead of luaL_newstate()
+    if (!L) {
+        Serial.println("[LUA] failed to create Lua state");
+        return;
+    }
+    lua_atpanic(L, sg_panic);
     luaL_openlibs(L); // for now, open everything
 
     lua_register(L, "print_screen", l_print_screen);
@@ -71,9 +220,18 @@ void lua_core_init() {
     lua_pushvalue(L, protected_globals);
     lua_setfield(L, LUA_REGISTRYINDEX, LUA_PROTECTED_GLOBALS);
     lua_settop(L, 0);
+
+    // Base state is built: from here on apps are limited to a fixed budget.
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    g_mem_limit = g_mem_used + SG_APP_MEM_BUDGET;
+    wd_set_hook();
+    Serial.printf("[LUA] base state: %u KB, app budget: %u KB (limit %u KB)\n",
+                  (unsigned)(g_mem_used / 1024), (unsigned)(SG_APP_MEM_BUDGET / 1024),
+                  (unsigned)(g_mem_limit / 1024));
 }
 
 void lua_core_reset_app() {
+    g_app_faulted = false;
     uint32_t before = ESP.getFreeHeap();
     wifi_scan_cancel();
     ble_scan_cancel();
@@ -99,17 +257,16 @@ void lua_core_reset_app() {
         lua_settop(L, 0);
         lua_gc(L, LUA_GCCOLLECT, 0);
     }
-    Serial.printf("[LUA] app state reset, free heap: %u -> %u bytes\n", before, ESP.getFreeHeap());
+    Serial.printf("[LUA] app state reset, free heap: %u -> %u bytes, lua mem: %u KB\n",
+                  before, ESP.getFreeHeap(), (unsigned)(g_mem_used / 1024));
 }
 
 void lua_core_run_string(const char* script) {
-    if (luaL_dostring(L, script) != LUA_OK) {
-        const char* err = lua_tostring(L, -1);
-        Serial.println(err);
-
-        show_lua_error(err);
-    }
-    lua_settop(L, 0); // drop the error message / any return values
+    g_app_faulted = false; // a newly started script begins with a clean slate
+    wd_begin();
+    int st = luaL_loadstring(L, script);
+    if (st == LUA_OK) st = lua_pcall(L, 0, LUA_MULTRET, 0);
+    finish_call(st, true);
 }
 
 void lua_core_run_file(const char* path) {
@@ -130,41 +287,29 @@ void lua_core_run_file(const char* path) {
 }
 
 void lua_core_run_test() {
-    const char* script = "print_screen('Hello from Lua!')";
-
-    if (luaL_dostring(L, script) != LUA_OK) {
-        const char* err = lua_tostring(L, -1);
-        Serial.println(err);
-
-        show_lua_error(err);
-    }
-    lua_settop(L, 0);
+    lua_core_run_string("print_screen('Hello from Lua!')");
 }
 
 void lua_core_call_update() {
+    if (g_app_faulted) return; // app was halted/killed, wait for ESC
     lua_getglobal(L, "update");
     if (lua_isfunction(L, -1)) {
-        if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-            const char* err = lua_tostring(L, -1);
-            Serial.println(err);
-
-            show_lua_error(err);
-            lua_pop(L, 1); // pop the error message, otherwise the stack grows every frame
-        }
+        wd_begin();
+        int st = lua_pcall(L, 0, 0, 0);
+        finish_call(st, true);
     } else {
         lua_pop(L, 1); // clean up the non-function value pushed by lua_getglobal
     }
 }
 
 void lua_core_call_on_key(char key) {
+    if (g_app_faulted) return;
     lua_getglobal(L, "on_key");
     if (lua_isfunction(L, -1)) {
         lua_pushinteger(L, key);
-        if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-            const char* err = lua_tostring(L, -1);
-            Serial.println(err);
-            lua_pop(L, 1); // pop the error message
-        }
+        wd_begin();
+        int st = lua_pcall(L, 1, 0, 0);
+        finish_call(st, false); // plain errors only log; OOM/watchdog still kill the app
     } else {
         lua_pop(L, 1);
     }
@@ -213,6 +358,7 @@ void register_storage_bindings(lua_State* L) {
 }
 
 LuaManifest lua_core_load_manifest(const char* script) {
+    WdScope wd_scope; // manifests are untrusted code too
     LuaManifest m;
     m.valid = false;
 
@@ -270,6 +416,7 @@ LuaManifest lua_core_load_manifest(const char* script) {
 }
 
 std::vector<WifiNetwork> lua_core_load_wifi_networks(const char* script) {
+    WdScope wd_scope;
     std::vector<WifiNetwork> networks;
 
     if (luaL_loadstring(L, script) != LUA_OK) {
@@ -316,6 +463,7 @@ std::vector<WifiNetwork> lua_core_load_wifi_networks(const char* script) {
 }
 
 WifiConfig lua_core_load_wifi_config(const char* script) {
+    WdScope wd_scope;
     WifiConfig cfg;
     cfg.autoconnect = true; // fallback per your request — missing field = assume true
 
@@ -352,6 +500,7 @@ WifiConfig lua_core_load_wifi_config(const char* script) {
 }
 
 LuaConfig lua_core_load_config(const char* script) {
+    WdScope wd_scope;
     LuaConfig cfg = {};
 
     if (luaL_loadstring(L, script) != LUA_OK) { lua_pop(L, 1); return cfg; }

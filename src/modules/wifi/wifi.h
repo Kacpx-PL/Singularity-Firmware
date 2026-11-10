@@ -25,6 +25,8 @@ enum WifiState {
 
 
 void wifi_set_known_networks(const std::vector<WifiNetwork>& networks);
+void wifi_apply_config(const std::vector<WifiNetwork>& networks, bool autoconnect); // boot-time load, does NOT save
+void wifi_block_saving(bool blocked); // refuse to overwrite wifi_networks.lua (used when it failed to parse)
 bool wifi_connect(const char* ssid, const char* password);
 void wifi_set_autoconnect(bool enabled); // saves to file
 bool wifi_get_autoconnect();
