@@ -45,18 +45,26 @@ bool storage_read(const char* path, char* buf, size_t maxlen) {
 }
 
 bool storage_ensure_dir(const char* path) {
-    // Recursively create directories if they don't exist
+    // Recursively create directories if they don't exist, INCLUDING the last component.
+    // (The old loop only created everything up to the last '/', so "/a/b" created "/a"
+    // but never "/a/b", and writes into a missing folder failed silently.)
     std::string pathStr(path);
-    size_t pos = 1;  // Skip leading /
-    
-    while ((pos = pathStr.find('/', pos)) != std::string::npos) {
-        std::string dir = pathStr.substr(0, pos);
+    while (pathStr.size() > 1 && pathStr.back() == '/') pathStr.pop_back(); // ignore trailing slashes
+    if (pathStr.empty() || pathStr == "/") return true; // nothing to create (root)
+
+    size_t pos = 1;  // skip leading /
+    while (true) {
+        pos = pathStr.find('/', pos);
+        std::string dir = (pos == std::string::npos) ? pathStr : pathStr.substr(0, pos);
+
         if (!SD.exists(dir.c_str())) {
             if (!SD.mkdir(dir.c_str())) {
                 Serial.printf("[STORAGE] Failed to create directory: %s\n", dir.c_str());
                 return false;
             }
         }
+
+        if (pos == std::string::npos) break; // that was the full path
         pos++;
     }
     return true;
