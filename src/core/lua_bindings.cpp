@@ -47,18 +47,24 @@ static int l_gpio_write(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int value = luaL_checkinteger(L, 2);
 
+    if (!pin_is_valid(pin)) {
+        return luaL_error(L, "GPIO %d does not exist on this chip", pin);
+    }
     if (pin_is_reserved(pin)) {
         return luaL_error(L, "GPIO %d is reserved by the firmware", pin);
     }
 
     pinMode(pin, OUTPUT);
-    digitalWrite(pin, value);
+    digitalWrite(pin, value != 0 ? HIGH : LOW);
     return 0;
 }
 
 static int l_gpio_read(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
 
+    if (!pin_is_valid(pin)) {
+        return luaL_error(L, "GPIO %d does not exist on this chip", pin);
+    }
     if (pin_is_reserved(pin)) {
         return luaL_error(L, "GPIO %d is reserved by the firmware", pin);
     }
@@ -68,26 +74,39 @@ static int l_gpio_read(lua_State* L) {
     return 1;
 }
 
+// Returns true if the protocol is supported and the signal was sent, false otherwise.
 static int l_ir_send_protocol(lua_State* L) {
     const char* protocol = luaL_checkstring(L, 1);
     uint32_t address = (uint32_t)luaL_checkinteger(L, 2);
     uint32_t command = (uint32_t)luaL_checkinteger(L, 3);
-    ir_send_protocol(protocol, address, command);
-    return 0;
+    lua_pushboolean(L, ir_send_protocol(protocol, address, command));
+    return 1;
 }
 
 static int l_ir_send_raw(lua_State* L) {
     luaL_checktype(L, 1, LUA_TTABLE);
-    int freq = luaL_checkinteger(L, 2);
+    // Accept kHz (38) or Hz (38000), and floats like 38.0 (freq / 1000 gives a float in Lua).
+    // Integer math only: the xtensa GCC 8.4 toolchain crashes (ICE) on the float clamping.
+    lua_Integer freq = (lua_Integer)luaL_checknumber(L, 2);
+    if (freq >= 1000) freq /= 1000;
+    if (freq < 1 || freq > 255) {
+        return luaL_error(L, "carrier frequency must be 1..255 kHz (or 1000..255000 Hz)");
+    }
 
-    int len = lua_rawlen(L, 1);
+    int len = (int)lua_rawlen(L, 1);
+    if (len < 1) return luaL_error(L, "raw IR data is empty");
+    if (len > 4096) return luaL_error(L, "raw IR data is limited to 4096 timings");
+
     uint16_t* data = (uint16_t*)malloc(len * sizeof(uint16_t));
     if (!data) return luaL_error(L, "out of memory for raw IR data");
 
     for (int i = 0; i < len; i++) {
         lua_rawgeti(L, 1, i + 1); // Lua arrays are 1-indexed
-        data[i] = (uint16_t)lua_tointeger(L, -1);
+        lua_Integer t = lua_tointeger(L, -1);
         lua_pop(L, 1);
+        if (t < 0) t = 0;
+        if (t > 65535) t = 65535;
+        data[i] = (uint16_t)t;
     }
 
     ir_send_raw(data, len, (uint16_t)freq);

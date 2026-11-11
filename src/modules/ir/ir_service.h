@@ -3,7 +3,7 @@
 #include <string>
 
 void ir_init();
-void ir_send_protocol(const std::string& protocol, uint32_t address, uint32_t command);
+bool ir_send_protocol(const std::string& protocol, uint32_t address, uint32_t command); // false if the protocol isn't supported
 void ir_send_raw(uint16_t* data, size_t len, uint16_t frequency_khz);
 
 bool ir_receive_available();

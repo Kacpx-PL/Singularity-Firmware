@@ -58,7 +58,10 @@ start_scan()
 
 function on_key(key)
     if mode == "detail" then
-        if key == 8 or key == '\r' then show_results() end
+        if key == 8 or key == 13 then -- backspace or enter (keys are numbers, not characters)
+            mode = "scan" -- back to list mode, otherwise the list stays unresponsive
+            show_results()
+        end
         return
     end
 

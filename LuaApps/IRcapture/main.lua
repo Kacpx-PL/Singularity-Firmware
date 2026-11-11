@@ -33,7 +33,7 @@ local function parse_ir_file(content)
             if current and current.name then table.insert(result, current) end
             current = {}
         elseif current then
-            local key, value = line:match("^(%w+):%s*(.+)$")
+            local key, value = line:match("^([%w_]+):%s*(.+)$") -- [%w_] so keys like duty_cycle survive a re-save
             if key then current[key] = value end
         end
     end
@@ -49,15 +49,25 @@ local function hex_bytes_to_int(hexstr)
     return value
 end
 
+-- Flipper .ir files store numbers as little-endian bytes: 0x1A2B -> "2B 1A 00 00"
+local function int_to_hex_bytes(n)
+    return string.format("%02X %02X %02X %02X",
+        n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF)
+end
+
+-- Every signal (freshly captured OR loaded from an existing file) keeps its fields as the
+-- strings used by the file format, so loaded remotes can be re-saved unchanged.
 local function save_ir_file()
     local content = "Filetype: IR signals file\nVersion: 1\n"
     for _, sig in ipairs(captured_signals) do
         content = content .. "#\n"
-        content = content .. "name: " .. sig.name .. "\n"
-        content = content .. "type: parsed\n"
-        content = content .. "protocol: " .. sig.protocol .. "\n"
-        content = content .. string.format("address: %02X 00 00 00\n", sig.address)
-        content = content .. string.format("command: %02X 00 00 00\n", sig.command)
+        content = content .. "name: " .. tostring(sig.name or "unnamed") .. "\n"
+        content = content .. "type: " .. tostring(sig.type or "parsed") .. "\n"
+        for _, k in ipairs({ "protocol", "address", "command", "frequency", "duty_cycle", "data" }) do
+            if sig[k] ~= nil then
+                content = content .. k .. ": " .. tostring(sig[k]) .. "\n"
+            end
+        end
     end
     storage_write(target_path, content)
 end
@@ -118,7 +128,8 @@ function on_key(key)
         else
             gfx.textInputDraw()
             if r == 1 then
-                local name = gfx.textInputGetVal()
+                local name = gfx.textInputGetVal():gsub("[^%w%-_ ]", "_") -- no path characters in file names
+                if name == "" then name = "remote" end
                 target_path = target_path .. "/" .. name .. ".ir"
                 captured_signals = {}
                 locked_protocol = nil
@@ -167,7 +178,12 @@ function update()
             return
         end
 
-        pending_signal = { protocol = protocol, address = address, command = command }
+        pending_signal = {
+            type = "parsed",
+            protocol = protocol,
+            address = int_to_hex_bytes(address),
+            command = int_to_hex_bytes(command),
+        }
         mode = "naming_signal"
 
         gfx.clearScreen()

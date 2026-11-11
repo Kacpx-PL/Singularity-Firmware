@@ -185,6 +185,8 @@ Parser fields always include `type`, `length`, and raw `data`. Known structures 
 
 Uses [Arduino IRremote](https://github.com/Arduino-IRremote/Arduino-IRremote) library
 
+`ir.sendProtocol` returns `true` if the signal was sent and `false` if the protocol isn't supported. Protocol names are case-insensitive and ignore separators, and both IRremote names (what `ir.receiveGetProtocol()` returns) and Flipper `.ir` names work (e.g. `NEC`, `NECext`, `Samsung32`, `SIRC`, `SIRC15`, `SIRC20`, `RC5X`). `ir.sendRaw` takes the carrier frequency in kHz (38) or Hz (38000).
+
 ```lua
 -- Sending 
 ir.sendProtocol("NEC", address, command)   -- works for NEC/NECext/Onkyo/Apple, Denon/Sharp,
@@ -208,7 +210,7 @@ end
 gpio.write(pin, value)
 gpio.read(pin)
 ```
-Reserved pins (SD card, IR LED, EXT/cap header) will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
+Reserved pins (SD card, IR LED/receiver, display, USB, audio, keyboard interrupt, flash and the EXT header) and pins that don't exist on the ESP32-S3 will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
 
 ### UI widgets
 
