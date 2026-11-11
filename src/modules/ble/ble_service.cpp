@@ -3,15 +3,28 @@
 #include <cstdio>
 #include <sdkconfig.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #if defined(CONFIG_BLUEDROID_ENABLED)
 #include <BLEDevice.h>
 #include <BLEAdvertisedDevice.h>
 #include <BLEScan.h>
 #endif
 
-static bool scan_active = false;
-static bool scan_complete = false;
+// scan_* are shared between the main task and the BLE task (scan-complete callback),
+// so they're guarded by a mutex.
+static volatile bool scan_active = false;
+static volatile bool scan_complete = false;
 static std::vector<BleScanResult> scan_results;
+static SemaphoreHandle_t scan_mutex = nullptr; // created on first scan, before any callback can run
+
+static void scan_lock() {
+    if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
+}
+static void scan_unlock() {
+    if (scan_mutex) xSemaphoreGive(scan_mutex);
+}
 
 #if defined(CONFIG_BLUEDROID_ENABLED)
 static bool ble_initialized = false;
@@ -46,6 +59,13 @@ static BleScanResult copy_device(BLEAdvertisedDevice device) {
 }
 
 static void on_scan_complete(BLEScanResults results) {
+    scan_lock();
+    if (!scan_active) {
+        // The scan was cancelled (app closed) before this callback arrived: ignore it,
+        // otherwise we'd write into results that were already cleared/freed.
+        scan_unlock();
+        return;
+    }
     scan_results.clear();
     scan_results.reserve(results.getCount());
     for (int i = 0; i < results.getCount(); i++) {
@@ -53,10 +73,12 @@ static void on_scan_complete(BLEScanResults results) {
     }
     scan_active = false;
     scan_complete = true;
+    scan_unlock();
 }
 #endif
 
 bool ble_scan_start(uint32_t duration_seconds, bool active) {
+    if (!scan_mutex) scan_mutex = xSemaphoreCreateMutex();
     if (scan_active) return false;
 #if defined(CONFIG_BLUEDROID_ENABLED)
     if (!ble_initialized) {
@@ -66,10 +88,20 @@ bool ble_scan_start(uint32_t duration_seconds, bool active) {
     BLEScan* scan = BLEDevice::getScan();
     scan->setActiveScan(active);
     scan->clearResults();
+
+    scan_lock();
     scan_results.clear();
     scan_complete = false;
-    scan_active = scan->start(duration_seconds, on_scan_complete, false);
-    return scan_active;
+    scan_active = true; // set BEFORE start() so a fast callback can't be mistaken for a cancelled scan
+    scan_unlock();
+
+    bool ok = scan->start(duration_seconds, on_scan_complete, false);
+    if (!ok) {
+        scan_lock();
+        scan_active = false;
+        scan_unlock();
+    }
+    return ok;
 #else
     (void)duration_seconds;
     (void)active;
@@ -78,18 +110,22 @@ bool ble_scan_start(uint32_t duration_seconds, bool active) {
 }
 
 void ble_scan_cancel() {
+    // NOTE: we deliberately do NOT call BLEDevice::deinit(true). deinit(true) releases the
+    // Bluetooth controller memory, which ESP-IDF allows only ONCE per boot and which makes
+    // BLE unusable until reboot (re-init fails with ESP_ERR_INVALID_STATE, a second release
+    // aborts the firmware). BLE therefore stays initialised after its first use.
 #if defined(CONFIG_BLUEDROID_ENABLED)
-    if (scan_active) BLEDevice::getScan()->stop();
-    if (ble_initialized) {
-        BLEDevice::getScan()->clearResults();
-        BLEDevice::deinit(true);
-        ble_initialized = false;
-    }
+    if (ble_initialized && scan_active) BLEDevice::getScan()->stop(); // not under the lock: the callback takes it
+#endif
+    scan_lock();
+#if defined(CONFIG_BLUEDROID_ENABLED)
+    if (ble_initialized) BLEDevice::getScan()->clearResults();
 #endif
     scan_active = false;
     scan_complete = false;
     scan_results.clear();
     scan_results.shrink_to_fit();
+    scan_unlock();
 }
 
 const char* ble_scan_status() {
@@ -107,9 +143,14 @@ int ble_scan_get_count() {
 }
 
 bool ble_scan_get_result(int index, BleScanResult& result) {
-    if (!scan_complete || index < 0 || index >= (int)scan_results.size()) return false;
-    result = scan_results[index];
-    return true;
+    bool found = false;
+    scan_lock();
+    if (scan_complete && index >= 0 && index < (int)scan_results.size()) {
+        result = scan_results[index];
+        found = true;
+    }
+    scan_unlock();
+    return found;
 }
 
 std::vector<BleAdField> ble_parse_advertisement(const uint8_t* data, size_t length) {
