@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Singularity Firmware Web Flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #1e293b;
+      padding: 2.5rem;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+    select {
+      width: 100%;
+      padding: 0.75rem;
+      margin: 1rem 0 1.5rem 0;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      font-size: 1rem;
+    }
+    p { color: #94a3b8; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Singularity Flasher</h2>
+    <p>Select a firmware version and connect your device via USB.</p>
+
+    <select id="version-select">
+      <option value="">Loading releases from GitHub...</option>
+    </select>
+
+    <div id="button-container"></div>
+  </div>
+
+  <script>
+    const FIRMWARE_PROXY_URL = 'https://singularity-firmware-proxy.kiszkacper.workers.dev';
+
+    async function initFlasher() {
+      const selectEl = document.getElementById('version-select');
+      const containerEl = document.getElementById('button-container');
+
+      try {
+        const response = await fetch(`${FIRMWARE_PROXY_URL}/releases`);
+        if (!response.ok) {
+          throw new Error(`Release lookup failed with HTTP ${response.status}`);
+        }
+        const releases = await response.json();
+
+        if (!Array.isArray(releases) || releases.length === 0) {
+          selectEl.innerHTML = '<option>No firmware releases found</option>';
+          return;
+        }
+
+        selectEl.innerHTML = '';
+
+        releases.forEach((release) => {
+          const binAsset = release.assets.find(asset =>
+            asset.name.toLowerCase().endsWith('.bin')
+          );
+          if (binAsset) {
+            const option = document.createElement('option');
+            option.value = binAsset.download_url;
+            option.textContent = release.name || release.tag;
+            selectEl.appendChild(option);
+          }
+        });
+
+        if (selectEl.options.length === 0) {
+          selectEl.innerHTML = '<option>No firmware binaries found in releases</option>';
+          return;
+        }
+
+        function updateInstallButton() {
+          const selectedUrl = selectEl.value;
+          containerEl.innerHTML = '';
+
+          const installButton = document.createElement('esp-web-install-button');
+
+          // Build manifest object and wrap it into a Data URI string
+          const manifestObj = {
+            name: "Singularity Firmware",
+            builds: [
+              {
+                chipFamily: "ESP32-S3",
+                parts: [
+                  { path: selectedUrl, offset: 0 }
+                ]
+              }
+            ]
+          };
+
+          const manifestBlob = new Blob([JSON.stringify(manifestObj)],{ type: "application/json" });
+          const manifestUrl = URL.createObjectURL(manifestBlob);
+
+          installButton.setAttribute("manifest", manifestUrl);
+          containerEl.appendChild(installButton);
+        }
+
+        updateInstallButton();
+        selectEl.addEventListener('change', updateInstallButton);
+
+      } catch (error) {
+        console.error('Error loading firmware releases:', error);
+        selectEl.innerHTML = '<option>Failed to load firmware releases</option>';
+      }
+    }
+
+    initFlasher();
+  </script>
+
+</body>
+</html>

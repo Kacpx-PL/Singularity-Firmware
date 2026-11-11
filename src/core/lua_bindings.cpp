@@ -641,26 +641,31 @@ static void l_espnow_on_receive(const uint8_t* mac, const uint8_t* data, int len
     portEXIT_CRITICAL(&espnow_rx_mux);
 }
 
+static int hex_digit_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// Parses "AA:BB:CC:DD:EE:FF" by hand. (sscanf pulled ~20 KB of scanf code into the firmware
+// and nothing else in the project uses it.)
 static bool l_espnow_parse_mac(lua_State* L, int index, uint8_t* mac) {
     size_t length = 0;
     const char* text = luaL_checklstring(L, index, &length);
-    unsigned int bytes[6];
-    int consumed = 0;
-    if (length != 17 ||
-        std::sscanf(text, "%2x:%2x:%2x:%2x:%2x:%2x%n",
-                    &bytes[0], &bytes[1], &bytes[2], &bytes[3], &bytes[4], &bytes[5],
-                    &consumed) != 6 ||
-        consumed != 17) {
-        luaL_argerror(L, index, "MAC address must use the format AA:BB:CC:DD:EE:FF");
-        return false;
+    bool valid = (length == 17);
+
+    for (size_t i = 0; valid && i < 6; i++) {
+        int hi = hex_digit_value(text[i * 3]);
+        int lo = hex_digit_value(text[i * 3 + 1]);
+        if (hi < 0 || lo < 0) valid = false;
+        if (i < 5 && text[i * 3 + 2] != ':') valid = false;
+        if (valid) mac[i] = static_cast<uint8_t>((hi << 4) | lo);
     }
 
-    for (size_t i = 0; i < 6; i++) {
-        if (bytes[i] > 0xFF) {
-            luaL_argerror(L, index, "invalid MAC address");
-            return false;
-        }
-        mac[i] = static_cast<uint8_t>(bytes[i]);
+    if (!valid) {
+        luaL_argerror(L, index, "MAC address must use the format AA:BB:CC:DD:EE:FF");
+        return false;
     }
     return true;
 }
