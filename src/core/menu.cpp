@@ -200,8 +200,12 @@ void menu_update(char key) {
     }
 
     if (state == STATE_MENU) {
-        if (key != 0 && !apps.empty()) {
-            if (key == ',') {
+        if (key != 0) {
+            if (key == '\n') {
+                menu_go_back();
+            } else if (apps.empty()) {
+                // nothing to select or open in an empty folder
+            } else if (key == ',') {
                 if (selected > 0) selected--;
                 needs_redraw = true;
             } else if (key == '/') {
@@ -225,8 +229,6 @@ void menu_update(char key) {
                     // For folders, stay in STATE_MENU and redraw
                     needs_redraw = true;
                 }
-            } else if (key == '\n') {
-                menu_go_back();
             }
         }
 

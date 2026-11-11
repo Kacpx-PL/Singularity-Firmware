@@ -6,7 +6,7 @@ For file structure see `sd_files`.
 
 # Lua API Reference
 
-Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `ir`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
+Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `espnow`, `ir`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
 
 ## App Lifecycle
 
@@ -95,6 +95,20 @@ end
 
 Each Wi-Fi result contains `ssid`, `bssid`, `rssi`, `channel`, and numeric `encryption` fields.
 
+### ESP-NOW
+
+ESP-NOW is initialized at boot. Add a peer before sending; MAC addresses use `AA:BB:CC:DD:EE:FF` format. `receive()` returns the latest received `{mac, data}` packet, or `nil`.
+
+```lua
+espnow.addPeer("AA:BB:CC:DD:EE:FF")
+espnow.send("AA:BB:CC:DD:EE:FF", "hello")
+
+local packet = espnow.receive()
+if packet then
+    sys.serialPrint(packet.mac .. ": " .. packet.data)
+end
+```
+
 ### Http/Json
 
 Note : http fetching is blocking it will block all draw calls untill the fetch succeeds/fails\
@@ -171,6 +185,8 @@ Parser fields always include `type`, `length`, and raw `data`. Known structures 
 
 Uses [Arduino IRremote](https://github.com/Arduino-IRremote/Arduino-IRremote) library
 
+`ir.sendProtocol` returns `true` if the signal was sent and `false` if the protocol isn't supported. Protocol names are case-insensitive and ignore separators, and both IRremote names (what `ir.receiveGetProtocol()` returns) and Flipper `.ir` names work (e.g. `NEC`, `NECext`, `Samsung32`, `SIRC`, `SIRC15`, `SIRC20`, `RC5X`). `ir.sendRaw` takes the carrier frequency in kHz (38) or Hz (38000).
+
 ```lua
 -- Sending 
 ir.sendProtocol("NEC", address, command)   -- works for NEC/NECext/Onkyo/Apple, Denon/Sharp,
@@ -194,7 +210,7 @@ end
 gpio.write(pin, value)
 gpio.read(pin)
 ```
-Reserved pins (SD card, IR LED, EXT/cap header) will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
+Reserved pins (SD card, IR LED/receiver, display, USB, audio, keyboard interrupt, flash and the EXT header) and pins that don't exist on the ESP32-S3 will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
 
 ### UI widgets
 
@@ -267,3 +283,6 @@ serial_print("debug message")   -- prints to the USB serial console
 - If something is missing check lua_bindings.cpp (some bindings are redundant)
 - Max script file size is 32KB while 160KB is mostly free for modules/values
 - minimize redrawing the elements, only draw the delta between frames if possible
+- **Resource limits:** each app may use about 96KB of Lua memory. Exceeding it (or dropping the device's free heap below ~16KB) kills the app with an "Out of memory" screen and frees everything
+- **Watchdog:** a single call (app start, `update()`, `on_key()`) that runs longer than 3 seconds is killed, so `while true do` no longer hangs the device. Time spent inside `http.fetch` / `wifi.connect` does not count. Press ESC after a kill to return to the menu
+- An uncaught error in the app's top-level code or in `update()` also stops the app and shows the error until you press ESC

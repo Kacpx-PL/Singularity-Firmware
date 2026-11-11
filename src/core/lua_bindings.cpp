@@ -1,4 +1,5 @@
 #include "lua_bindings.h"
+#include "lua_core.h"
 #include "status_bar.h"
 #include "config.h"
 #include "pins.h"
@@ -6,6 +7,7 @@
 #include "M5Cardputer.h"
 #include "../modules/wifi/wifi.h"
 #include "../modules/ble/ble_service.h"
+#include "../modules/espnow/espnow_service.h"
 #include "../modules/ui/ui_list.h"
 #include "../modules/ui/ui_text_input.h"
 #include "../modules/ui/ui_file_browser.h"
@@ -17,6 +19,10 @@ extern "C" {
 }
 
 #include <ArduinoJson.h>
+#include <esp_now.h>
+#include <freertos/FreeRTOS.h>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -41,18 +47,24 @@ static int l_gpio_write(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int value = luaL_checkinteger(L, 2);
 
+    if (!pin_is_valid(pin)) {
+        return luaL_error(L, "GPIO %d does not exist on this chip", pin);
+    }
     if (pin_is_reserved(pin)) {
         return luaL_error(L, "GPIO %d is reserved by the firmware", pin);
     }
 
     pinMode(pin, OUTPUT);
-    digitalWrite(pin, value);
+    digitalWrite(pin, value != 0 ? HIGH : LOW);
     return 0;
 }
 
 static int l_gpio_read(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
 
+    if (!pin_is_valid(pin)) {
+        return luaL_error(L, "GPIO %d does not exist on this chip", pin);
+    }
     if (pin_is_reserved(pin)) {
         return luaL_error(L, "GPIO %d is reserved by the firmware", pin);
     }
@@ -62,26 +74,39 @@ static int l_gpio_read(lua_State* L) {
     return 1;
 }
 
+// Returns true if the protocol is supported and the signal was sent, false otherwise.
 static int l_ir_send_protocol(lua_State* L) {
     const char* protocol = luaL_checkstring(L, 1);
     uint32_t address = (uint32_t)luaL_checkinteger(L, 2);
     uint32_t command = (uint32_t)luaL_checkinteger(L, 3);
-    ir_send_protocol(protocol, address, command);
-    return 0;
+    lua_pushboolean(L, ir_send_protocol(protocol, address, command));
+    return 1;
 }
 
 static int l_ir_send_raw(lua_State* L) {
     luaL_checktype(L, 1, LUA_TTABLE);
-    int freq = luaL_checkinteger(L, 2);
+    // Accept kHz (38) or Hz (38000), and floats like 38.0 (freq / 1000 gives a float in Lua).
+    // Integer math only: the xtensa GCC 8.4 toolchain crashes (ICE) on the float clamping.
+    lua_Integer freq = (lua_Integer)luaL_checknumber(L, 2);
+    if (freq >= 1000) freq /= 1000;
+    if (freq < 1 || freq > 255) {
+        return luaL_error(L, "carrier frequency must be 1..255 kHz (or 1000..255000 Hz)");
+    }
 
-    int len = lua_rawlen(L, 1);
+    int len = (int)lua_rawlen(L, 1);
+    if (len < 1) return luaL_error(L, "raw IR data is empty");
+    if (len > 4096) return luaL_error(L, "raw IR data is limited to 4096 timings");
+
     uint16_t* data = (uint16_t*)malloc(len * sizeof(uint16_t));
     if (!data) return luaL_error(L, "out of memory for raw IR data");
 
     for (int i = 0; i < len; i++) {
         lua_rawgeti(L, 1, i + 1); // Lua arrays are 1-indexed
-        data[i] = (uint16_t)lua_tointeger(L, -1);
+        lua_Integer t = lua_tointeger(L, -1);
         lua_pop(L, 1);
+        if (t < 0) t = 0;
+        if (t > 65535) t = 65535;
+        data[i] = (uint16_t)t;
     }
 
     ir_send_raw(data, len, (uint16_t)freq);
@@ -167,6 +192,7 @@ static int l_wifi_connect(lua_State* L) {
     const char* ssid = luaL_checkstring(L, 1);
     const char* pass = luaL_checkstring(L, 2);
     bool ok = wifi_connect(ssid, pass);
+    lua_core_watchdog_kick(); // time spent blocking on the network doesn't count against the script
     lua_pushboolean(L, ok);
     return 1;
 }
@@ -355,7 +381,9 @@ static int l_ble_parse_advertisement(lua_State* L) {
     size_t length = lua_rawlen(L, 1);
     if (length > 255) return luaL_error(L, "advertisement payload is limited to 255 bytes");
 
-    std::vector<uint8_t> data(length);
+    // Fixed stack buffer (max 255 bytes): luaL_error/luaL_checkinteger longjmp
+    // and would skip a std::vector destructor, leaking its heap block.
+    uint8_t data[255];
     for (size_t i = 0; i < length; i++) {
         lua_rawgeti(L, 1, (int)i + 1);
         lua_Integer byte = luaL_checkinteger(L, -1);
@@ -364,7 +392,7 @@ static int l_ble_parse_advertisement(lua_State* L) {
         data[i] = (uint8_t)byte;
     }
 
-    std::vector<BleAdField> fields = ble_parse_advertisement(data.data(), data.size());
+    std::vector<BleAdField> fields = ble_parse_advertisement(data, length);
     lua_createtable(L, (int)fields.size(), 0);
     for (size_t i = 0; i < fields.size(); i++) {
         const BleAdField& field = fields[i];
@@ -596,11 +624,97 @@ void lua_push_json_value(lua_State* L, JsonVariantConst v) {
     }
 }
 
+static portMUX_TYPE espnow_rx_mux = portMUX_INITIALIZER_UNLOCKED;
+static bool espnow_rx_available = false;
+static uint8_t espnow_rx_mac[6];
+static uint8_t espnow_rx_data[ESP_NOW_MAX_DATA_LEN];
+static int espnow_rx_length = 0;
+
+static void l_espnow_on_receive(const uint8_t* mac, const uint8_t* data, int length) {
+    if (!mac || !data || length < 0 || length > ESP_NOW_MAX_DATA_LEN) return;
+
+    portENTER_CRITICAL(&espnow_rx_mux);
+    std::memcpy(espnow_rx_mac, mac, sizeof(espnow_rx_mac));
+    std::memcpy(espnow_rx_data, data, length);
+    espnow_rx_length = length;
+    espnow_rx_available = true;
+    portEXIT_CRITICAL(&espnow_rx_mux);
+}
+
+static bool l_espnow_parse_mac(lua_State* L, int index, uint8_t* mac) {
+    size_t length = 0;
+    const char* text = luaL_checklstring(L, index, &length);
+    unsigned int bytes[6];
+    int consumed = 0;
+    if (length != 17 ||
+        std::sscanf(text, "%2x:%2x:%2x:%2x:%2x:%2x%n",
+                    &bytes[0], &bytes[1], &bytes[2], &bytes[3], &bytes[4], &bytes[5],
+                    &consumed) != 6 ||
+        consumed != 17) {
+        luaL_argerror(L, index, "MAC address must use the format AA:BB:CC:DD:EE:FF");
+        return false;
+    }
+
+    for (size_t i = 0; i < 6; i++) {
+        if (bytes[i] > 0xFF) {
+            luaL_argerror(L, index, "invalid MAC address");
+            return false;
+        }
+        mac[i] = static_cast<uint8_t>(bytes[i]);
+    }
+    return true;
+}
+
+static int l_espnow_add_peer(lua_State* L) {
+    uint8_t mac[6];
+    l_espnow_parse_mac(L, 1, mac);
+    lua_pushboolean(L, espnow_add_peer(mac));
+    return 1;
+}
+
+static int l_espnow_send(lua_State* L) {
+    uint8_t mac[6];
+    l_espnow_parse_mac(L, 1, mac);
+    size_t length = 0;
+    const char* data = luaL_checklstring(L, 2, &length);
+    lua_pushboolean(L, espnow_send(mac, reinterpret_cast<const uint8_t*>(data), length));
+    return 1;
+}
+
+static int l_espnow_receive(lua_State* L) {
+    uint8_t mac[6];
+    uint8_t data[ESP_NOW_MAX_DATA_LEN];
+    int length;
+
+    portENTER_CRITICAL(&espnow_rx_mux);
+    if (!espnow_rx_available) {
+        portEXIT_CRITICAL(&espnow_rx_mux);
+        lua_pushnil(L);
+        return 1;
+    }
+    std::memcpy(mac, espnow_rx_mac, sizeof(mac));
+    length = espnow_rx_length;
+    std::memcpy(data, espnow_rx_data, length);
+    espnow_rx_available = false;
+    portEXIT_CRITICAL(&espnow_rx_mux);
+
+    char mac_text[18];
+    std::snprintf(mac_text, sizeof(mac_text), "%02X:%02X:%02X:%02X:%02X:%02X",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, mac_text);
+    lua_setfield(L, -2, "mac");
+    lua_pushlstring(L, reinterpret_cast<const char*>(data), length);
+    lua_setfield(L, -2, "data");
+    return 1;
+}
+
 static int l_http_fetch(lua_State* L) {
     const char* url = luaL_checkstring(L, 1);
     int timeout_ms = luaL_optinteger(L, 2, 10000);
 
     HttpResponse response = http_fetch(url, timeout_ms);
+    lua_core_watchdog_kick(); // blocking network time doesn't count against the script
     lua_createtable(L, 0, 4);
 
     lua_pushinteger(L, response.status_code);
@@ -727,6 +841,13 @@ static const luaL_Reg ble_lib[] = {
     {NULL, NULL}
 };
 
+static const luaL_Reg espnow_lib[] = {
+    {"addPeer", l_espnow_add_peer},
+    {"send", l_espnow_send},
+    {"receive", l_espnow_receive},
+    {NULL, NULL}
+};
+
 static const luaL_Reg http_lib[] = {
     {"fetch", l_http_fetch},
     {"jsonParse", l_json_parse},
@@ -790,6 +911,12 @@ void register_wifi_bindings(lua_State* L) {
 void register_ble_bindings(lua_State* L) {
     luaL_newlib(L, ble_lib);
     lua_setglobal(L, "ble");
+}
+
+void register_espnow_bindings(lua_State* L) {
+    espnow_set_receive_callback(l_espnow_on_receive);
+    luaL_newlib(L, espnow_lib);
+    lua_setglobal(L, "espnow");
 }
 
 void register_http_bindings(lua_State* L) {

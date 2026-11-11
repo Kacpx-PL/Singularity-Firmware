@@ -93,6 +93,7 @@ function on_key(key)
             gfx.fileBrowserDraw()
         elseif result ~= nil and result >= 0 then
             local sig = signals[result + 1]
+            local status = "Sent: " .. sig.name
 
             if sig.type == "raw" then
                 local data = parse_raw_data(sig.data)
@@ -101,13 +102,15 @@ function on_key(key)
             else
                 local address = hex_bytes_to_int(sig.address)
                 local command = hex_bytes_to_int(sig.command)
-                ir.sendProtocol(sig.protocol, address, command)
+                if not ir.sendProtocol(sig.protocol, address, command) then
+                    status = "Unsupported: " .. tostring(sig.protocol)
+                end
             end
 
             gfx.clearScreen()
             gfx.drawText("Select signal:", 10, 25, 2)
             gfx.listDraw()
-            gfx.drawText("Sent: " .. sig.name, 15, 45, 1)
+            gfx.drawText(status, 15, 45, 1)
         end
     end
 end

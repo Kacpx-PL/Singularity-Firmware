@@ -4,11 +4,12 @@
 #include <WiFi.h>
 #include <vector>
 
-#define RSSI_ROAM_THRESHOLD -75  // if current connection drops below this, consider switching
-#define MONITOR_INTERVAL_MS 15000
+#define DISCONNECT_GRACE_MS 5000  // connection must be gone this long before we treat it as dropped
 
 static std::vector<WifiNetwork> known_networks;
-static unsigned long last_monitor_check = 0;
+static unsigned long disconnected_since = 0;
+static bool suppress_reconnect = false; // set by wifi_disconnect(): stay offline until the user connects again
+static bool save_blocked = false;       // set when wifi_networks.lua exists but could not be parsed
 
 static WifiState state = WIFI_STATE_IDLE;
 static unsigned long state_started = 0;
@@ -19,6 +20,7 @@ static bool lua_scan_complete = false;
 static std::vector<WifiScanResult> lua_scan_results;
 
 bool wifi_connect(const char* ssid, const char* password) {
+    suppress_reconnect = false; // the user explicitly asked to connect
     WiFi.begin(ssid, password);
 
     int attempts = 0;
@@ -27,14 +29,33 @@ bool wifi_connect(const char* ssid, const char* password) {
         attempts++;
     }
 
-    return WiFi.status() == WL_CONNECTED;
+    bool ok = (WiFi.status() == WL_CONNECTED);
+    // keep the state machine in sync with what just happened
+    state = ok ? WIFI_STATE_CONNECTED : WIFI_STATE_IDLE;
+    pending_network = nullptr;
+    disconnected_since = 0;
+    return ok;
 }
 
 void wifi_set_known_networks(const std::vector<WifiNetwork>& networks) {
     known_networks = networks;
 }
 
+// Used at boot: applies the loaded settings WITHOUT writing them back to the SD card.
+void wifi_apply_config(const std::vector<WifiNetwork>& networks, bool autoconnect) {
+    known_networks = networks;
+    autoconnect_enabled = autoconnect;
+}
+
+// Called when wifi_networks.lua exists but couldn't be read/parsed, so that a later
+// addNetwork()/setAutoconnect() can't overwrite the user's saved networks with an empty list.
+void wifi_block_saving(bool blocked) {
+    save_blocked = blocked;
+}
+
 void wifi_start_auto_connect() {
+    if (lua_scan_active) return; // don't fight an app's own scan
+    suppress_reconnect = false;
     WiFi.scanNetworks(true); // true = async scan, returns immediately
     state = WIFI_STATE_SCANNING;
     state_started = millis();
@@ -97,24 +118,41 @@ void wifi_tick() {
         case WIFI_STATE_CONNECTING: {
             if (WiFi.status() == WL_CONNECTED) {
                 state = WIFI_STATE_CONNECTED;
+                disconnected_since = 0;
             } else if (millis() - state_started > 10000) {
                 state = WIFI_STATE_FAILED;
             }
             break;
         }
 
+        case WIFI_STATE_CONNECTED: {
+            // Notice a dropped connection (AP reboot, out of range...) after a short grace
+            // period, then hand over to IDLE which reconnects if auto-connect is on.
+            if (WiFi.status() == WL_CONNECTED) {
+                disconnected_since = 0;
+            } else if (disconnected_since == 0) {
+                disconnected_since = millis();
+            } else if (millis() - disconnected_since > DISCONNECT_GRACE_MS) {
+                disconnected_since = 0;
+                state = WIFI_STATE_IDLE;
+            }
+            break;
+        }
+
         case WIFI_STATE_IDLE: {
-            // Auto-reconnect: if idle and not connected, start scanning
-            if (WiFi.status() != WL_CONNECTED && !known_networks.empty()) {
+            if (WiFi.status() == WL_CONNECTED) {
+                state = WIFI_STATE_CONNECTED; // something else connected us
+            } else if (autoconnect_enabled && !suppress_reconnect && !known_networks.empty()) {
+                // Auto-reconnect: idle, not connected, allowed to auto-connect -> scan
                 wifi_start_auto_connect();
             }
             break;
         }
 
         case WIFI_STATE_FAILED: {
-            // Retry after a delay
+            // Retry after a delay, but only if auto-connect is still allowed
             if (millis() - state_started > 5000) {
-                if (!known_networks.empty()) {
+                if (autoconnect_enabled && !suppress_reconnect && !known_networks.empty()) {
                     wifi_start_auto_connect();
                 } else {
                     state = WIFI_STATE_IDLE;
@@ -124,11 +162,15 @@ void wifi_tick() {
         }
 
         default:
-            break; // CONNECTED — nothing to advance
+            break;
     }
 }
 
 static void save_wifi_config() {
+    if (save_blocked) {
+        Serial.println("[WIFI] saving blocked: wifi_networks.lua could not be parsed at boot, not overwriting it");
+        return;
+    }
     std::string out = "return {\n    autoconnect = ";
     out += autoconnect_enabled ? "true" : "false";
     out += ",\n    networks = {\n";
@@ -143,6 +185,7 @@ static void save_wifi_config() {
 
 void wifi_set_autoconnect(bool enabled) {
     autoconnect_enabled = enabled;
+    if (enabled) suppress_reconnect = false; // turning it on again lifts a previous manual disconnect
     save_wifi_config();
 }
 
@@ -164,6 +207,8 @@ bool wifi_is_connected() {
 }
 
 void wifi_disconnect() {
+    suppress_reconnect = true; // stay disconnected until the user connects again
+    disconnected_since = 0;
     WiFi.disconnect();
     state = WIFI_STATE_IDLE;
     pending_network = nullptr;
@@ -211,8 +256,9 @@ bool wifi_scan_start(bool show_hidden) {
 }
 
 void wifi_scan_cancel() {
-    if (!lua_scan_active) return;
-    WiFi.scanDelete();
+    // Always release results, even if the scan already completed; otherwise
+    // the vector's memory stays allocated after the app that scanned has closed.
+    if (lua_scan_active) WiFi.scanDelete();
     lua_scan_active = false;
     lua_scan_complete = false;
     lua_scan_results.clear();
