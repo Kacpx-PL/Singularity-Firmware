@@ -14,7 +14,7 @@ A micro SD card is required for use of this firmware
 
 ## Flashing
 
-#### [Singularity Flasher](https://kacpx-pl.github.io/Singularity-Firmware/)
+### [Singularity Flasher](https://kacpx-pl.github.io/Singularity-Firmware/)
 
 **Remove** the sd card before flashing
 
