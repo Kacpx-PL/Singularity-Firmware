@@ -3,6 +3,7 @@
 #include "../modules/ble/ble_service.h"
 #include "../modules/wifi/wifi.h"
 #include "../modules/http/http_service.h"
+#include "../modules/i2c/i2c_service.h"
 
 extern "C" {
     #include "lua.h"
@@ -33,6 +34,7 @@ static bool g_app_faulted = false;    // true once an app was halted/killed; loo
 static bool g_wd_enabled = false;
 static bool g_wd_tripped = false;
 static unsigned long g_wd_start = 0;
+static std::string g_app_dir;         // folder of the running SD app ("" for built-in apps)
 
 // Lua allocator with accounting. Returning NULL on growth makes Lua run an
 // emergency GC and then raise LUA_ERRMEM, which the pcall wrappers turn into a kill.
@@ -116,6 +118,14 @@ bool lua_core_app_faulted() {
 
 size_t lua_core_mem_used() {
     return g_mem_used;
+}
+
+void lua_core_set_app_dir(const char* dir) {
+    g_app_dir = dir ? dir : "";
+}
+
+const char* lua_core_get_app_dir() {
+    return g_app_dir.c_str();
 }
 
 
@@ -202,6 +212,7 @@ void lua_core_init() {
     register_ble_bindings(L);
     register_espnow_bindings(L);
     register_http_bindings(L);
+    register_i2c_bindings(L);
     registergfx_bindings(L);
 
     register_storage_bindings(L); // defined here
@@ -236,6 +247,8 @@ void lua_core_reset_app() {
     wifi_scan_cancel();
     ble_scan_cancel();
     http_cleanup();
+    i2c_end();            // give the Grove port back (and re-enable IR receive)
+    g_app_dir.clear();
     if (L) {
         lua_pushglobaltable(L);
         int globals = lua_gettop(L);

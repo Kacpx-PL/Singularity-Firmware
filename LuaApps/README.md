@@ -6,7 +6,7 @@ For file structure see `sd_files`.
 
 # Lua API Reference
 
-Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `espnow`, `ir`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
+Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `espnow`, `http`, `ir`, `i2c`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
 
 ## App Lifecycle
 
@@ -48,8 +48,36 @@ sys.keyPressed(key)                          -- checks for a pressed key (use an
 sys.millis()                                 -- returns ms since boot
 sys.serialPrint("debug message")              -- prints to the USB serial console
 local imuData = sys.getImu()                  -- gets current IMU sensor reading
+sys.appDir()                                  -- this app's own folder, e.g. "/singularity/apps/weather" (nil for built-in apps)
 ```
 Keys register as **numbers**, not characters compare against the numeric code, e.g. `if key == 8 then` for backspace, not `if key == '\b' then`.
+
+### Time (NTP)
+
+The Lua environment has no `os` library, so use these instead.
+
+```lua
+sys.ntpStart("CET-1CEST,M3.5.0,M10.5.0/3")   -- optional POSIX timezone string (default "UTC0"), optional NTP server
+sys.ntpSynced()                              -- true once the NTP server has answered
+local t = sys.time()                         -- local time table, or nil if the clock was never set
+local e = sys.epoch()                        -- seconds since 1970 (UTC), or nil if the clock was never set
+```
+
+- `sys.ntpStart` returns immediately and syncs in the background. Wi-Fi must be connected; if it isn't yet, it keeps retrying. Poll `sys.ntpSynced()` from `update()`.
+- `sys.time()` returns `year, month, day, hour, min, sec, wday, yday`. `wday` is 1 for Sunday.
+- The timezone is a POSIX TZ string, and the sign is inverted from what you'd expect: `"UTC0"` is UTC, `"CET-1CEST,M3.5.0,M10.5.0/3"` is Central Europe with daylight saving, `"EST5EDT,M3.2.0,M11.1.0"` is US Eastern. It stays set after the app closes.
+- `sys.time()` / `sys.epoch()` return nil until the clock holds a date from 2024 or later, so they don't need `ntpSynced()` to be true first.
+
+```lua
+sys.ntpStart("CET-1CEST,M3.5.0,M10.5.0/3")
+
+function update()
+    local t = sys.time()
+    if t then
+        gfx.drawText(string.format("%02d:%02d:%02d", t.hour, t.min, t.sec), 10, 40)
+    end
+end
+```
 
 ### Storage (SD card)
 
@@ -57,6 +85,15 @@ Keys register as **numbers**, not characters compare against the numeric code, e
 local content = storage_read("/singularity/system/config.lua")  -- returns nil if file doesn't exist
 storage_write("/path/to/file.txt", "Hello World!")
 storage_exists("/path/to/file")
+```
+
+Every app has its own folder, and `sys.appDir()` tells you where it is. Where an app lives depends on how the user organised their SD card (apps can sit inside folders), so never hardcode the path; build it from `sys.appDir()`. Writing to a path whose folders don't exist yet creates them.
+
+```lua
+local dir = sys.appDir()
+local saved = storage_read(dir .. "/city.txt")     -- nil on the first launch
+storage_write(dir .. "/city.txt", "Berlin")
+storage_write(dir .. "/saves/slot1.txt", "...")    -- creates /saves automatically
 ```
 
 ### WiFi
@@ -211,6 +248,32 @@ gpio.write(pin, value)
 gpio.read(pin)
 ```
 Reserved pins (SD card, IR LED/receiver, display, USB, audio, keyboard interrupt, flash and the EXT header) and pins that don't exist on the ESP32-S3 will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
+
+### I2C
+
+Crude I2C master on the Grove port: **SDA = GPIO 2, SCL = GPIO 1**. You send raw bytes and read raw bytes back; the app has to know what a given module expects. The internal bus (keyboard, IMU) is separate and not reachable from here.
+
+```lua
+if not i2c.begin(100000) then       -- optional clock in Hz, default 100000 (clamped 10 kHz..1 MHz)
+    sys.serialPrint("i2c failed")
+end
+
+local found = i2c.scan()            -- array of addresses that answered, e.g. {0x44}
+
+i2c.write(0x44, {0x24, 0x00})       -- true if the module ACKed. Takes a table of bytes or a string
+local data = i2c.read(0x44, 6)      -- table of 6 bytes, or nil if the module didn't answer
+
+-- most sensors want "write a register number, then read" with a repeated start in between:
+local reg = i2c.writeRead(0x68, {0x75}, 1)
+
+i2c.close()                         -- optional, it also happens automatically when the app closes
+```
+
+- Addresses are 7-bit and must be `0x08`–`0x77`. Up to 255 bytes per call.
+- I2C modules never push data on their own, so "listening" means polling: call `i2c.read` from `update()`.
+- GPIO 1 is also the **IR receiver pin**. While I2C is open, `ir.receive*` doesn't work; `i2c.close()` (or closing the app) turns it back on.
+- While I2C is open, `gpio.read/write` on pins 1 and 2 raise an error.
+- Calling `i2c.write/read/writeRead/scan` before `i2c.begin()` raises an error.
 
 ### UI widgets
 

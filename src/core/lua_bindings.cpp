@@ -12,6 +12,8 @@
 #include "../modules/ui/ui_text_input.h"
 #include "../modules/ui/ui_file_browser.h"
 #include "../modules/http/http_service.h"
+#include "../modules/i2c/i2c_service.h"
+#include "../modules/ntp/ntp_service.h"
 
 extern "C" {
     #include "lua.h"
@@ -23,6 +25,7 @@ extern "C" {
 #include <freertos/FreeRTOS.h>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -53,6 +56,9 @@ static int l_gpio_write(lua_State* L) {
     if (pin_is_reserved(pin)) {
         return luaL_error(L, "GPIO %d is reserved by the firmware", pin);
     }
+    if (i2c_is_active() && (pin == SG_PIN_GROVE_SDA || pin == SG_PIN_GROVE_SCL)) {
+        return luaL_error(L, "GPIO %d is in use by I2C (call i2c.close() first)", pin);
+    }
 
     pinMode(pin, OUTPUT);
     digitalWrite(pin, value != 0 ? HIGH : LOW);
@@ -67,6 +73,9 @@ static int l_gpio_read(lua_State* L) {
     }
     if (pin_is_reserved(pin)) {
         return luaL_error(L, "GPIO %d is reserved by the firmware", pin);
+    }
+    if (i2c_is_active() && (pin == SG_PIN_GROVE_SDA || pin == SG_PIN_GROVE_SCL)) {
+        return luaL_error(L, "GPIO %d is in use by I2C (call i2c.close() first)", pin);
     }
 
     pinMode(pin, INPUT);
@@ -181,6 +190,65 @@ static int l_get_imu(lua_State* L) {
         lua_rawseti(L, -2, i + 1);
     }
 
+    return 1;
+}
+
+// sys.appDir() -> "/singularity/apps/<...>/<app>" (no trailing slash), nil for built-in apps
+static int l_sys_app_dir(lua_State* L) {
+    const char* dir = lua_core_get_app_dir();
+    if (dir && *dir) lua_pushstring(L, dir);
+    else lua_pushnil(L);
+    return 1;
+}
+
+// sys.ntpStart([tz], [server]) - non-blocking, see ntp_service.h
+static int l_sys_ntp_start(lua_State* L) {
+    const char* tz = luaL_optstring(L, 1, "UTC0");
+    const char* server = luaL_optstring(L, 2, "pool.ntp.org");
+    ntp_start(tz, server);
+    return 0;
+}
+
+static int l_sys_ntp_synced(lua_State* L) {
+    lua_pushboolean(L, ntp_synced());
+    return 1;
+}
+
+// sys.epoch() -> seconds since 1970 (UTC), nil if the clock was never set
+static int l_sys_epoch(lua_State* L) {
+    if (!ntp_time_valid()) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, (lua_Integer)time(nullptr));
+    return 1;
+}
+
+static void set_int_field(lua_State* L, const char* key, int value) {
+    lua_pushinteger(L, value);
+    lua_setfield(L, -2, key);
+}
+
+// sys.time() -> {year, month, day, hour, min, sec, wday, yday} in the timezone given to
+// ntpStart (UTC by default); wday 1 = Sunday (same as Lua's os.date "*t"). nil if never set.
+static int l_sys_time(lua_State* L) {
+    if (!ntp_time_valid()) {
+        lua_pushnil(L);
+        return 1;
+    }
+    time_t now = time(nullptr);
+    struct tm t;
+    localtime_r(&now, &t);
+
+    lua_createtable(L, 0, 8);
+    set_int_field(L, "year", t.tm_year + 1900);
+    set_int_field(L, "month", t.tm_mon + 1);
+    set_int_field(L, "day", t.tm_mday);
+    set_int_field(L, "hour", t.tm_hour);
+    set_int_field(L, "min", t.tm_min);
+    set_int_field(L, "sec", t.tm_sec);
+    set_int_field(L, "wday", t.tm_wday + 1);
+    set_int_field(L, "yday", t.tm_yday + 1);
     return 1;
 }
 
@@ -425,6 +493,113 @@ static int l_ble_parse_advertisement(lua_State* L) {
         }
         lua_rawseti(L, -2, (int)i + 1);
     }
+    return 1;
+}
+
+// -----I2C Bindings (Grove port)-------
+// Fixed stack buffers on purpose: luaL_error longjmps and would skip C++ destructors.
+
+static uint8_t i2c_check_addr(lua_State* L, int idx) {
+    lua_Integer a = luaL_checkinteger(L, idx);
+    if (a < 0x08 || a > 0x77) {
+        luaL_argerror(L, idx, "I2C address must be 0x08..0x77");
+    }
+    return (uint8_t)a;
+}
+
+static void i2c_check_active(lua_State* L) {
+    if (!i2c_is_active()) luaL_error(L, "I2C not started: call i2c.begin() first");
+}
+
+// Accepts a Lua string (raw bytes) or an array of integers 0..255.
+static size_t i2c_arg_bytes(lua_State* L, int idx, uint8_t* buf, size_t max) {
+    size_t len = 0;
+    if (lua_type(L, idx) == LUA_TSTRING) {
+        const char* s = lua_tolstring(L, idx, &len);
+        if (len > max) luaL_argerror(L, idx, "too many bytes (max 255)");
+        std::memcpy(buf, s, len);
+        return len;
+    }
+    luaL_checktype(L, idx, LUA_TTABLE);
+    len = lua_rawlen(L, idx);
+    if (len > max) luaL_argerror(L, idx, "too many bytes (max 255)");
+    for (size_t i = 0; i < len; i++) {
+        lua_rawgeti(L, idx, (int)i + 1);
+        lua_Integer v = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+        if (v < 0 || v > 255) luaL_argerror(L, idx, "bytes must be in range 0..255");
+        buf[i] = (uint8_t)v;
+    }
+    return len;
+}
+
+static size_t i2c_check_count(lua_State* L, int idx) {
+    lua_Integer n = luaL_checkinteger(L, idx);
+    if (n < 1 || n > SG_I2C_MAX_BYTES) luaL_argerror(L, idx, "byte count must be 1..255");
+    return (size_t)n;
+}
+
+// i2c.begin([freq_hz]) -> bool. Default 100000; clamped to 10 kHz..1 MHz.
+static int l_i2c_begin(lua_State* L) {
+    lua_Integer freq = luaL_optinteger(L, 1, 100000);
+    if (freq < 10000) freq = 10000;
+    if (freq > 1000000) freq = 1000000;
+    lua_pushboolean(L, i2c_begin((uint32_t)freq));
+    return 1;
+}
+
+static int l_i2c_end(lua_State* L) {
+    i2c_end();
+    return 0;
+}
+
+// i2c.write(addr, bytes) -> true if the device ACKed. An empty table just pings the address.
+static int l_i2c_write(lua_State* L) {
+    uint8_t addr = i2c_check_addr(L, 1);
+    uint8_t data[SG_I2C_MAX_BYTES];
+    size_t len = i2c_arg_bytes(L, 2, data, sizeof(data));
+    i2c_check_active(L);
+    lua_pushboolean(L, i2c_write(addr, data, len));
+    return 1;
+}
+
+// i2c.read(addr, count) -> array of bytes, or nil if the device didn't answer
+static int l_i2c_read(lua_State* L) {
+    uint8_t addr = i2c_check_addr(L, 1);
+    size_t count = i2c_check_count(L, 2);
+    i2c_check_active(L);
+    uint8_t out[SG_I2C_MAX_BYTES];
+    if (!i2c_read(addr, out, count)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    push_byte_table(L, out, count);
+    return 1;
+}
+
+// i2c.writeRead(addr, bytes, count) -> array of bytes or nil. Repeated start between the
+// write and the read, which is what most register-based sensors expect.
+static int l_i2c_write_read(lua_State* L) {
+    uint8_t addr = i2c_check_addr(L, 1);
+    uint8_t data[SG_I2C_MAX_BYTES];
+    size_t wlen = i2c_arg_bytes(L, 2, data, sizeof(data));
+    size_t count = i2c_check_count(L, 3);
+    i2c_check_active(L);
+    uint8_t out[SG_I2C_MAX_BYTES];
+    if (!i2c_write_read(addr, data, wlen, out, count)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    push_byte_table(L, out, count);
+    return 1;
+}
+
+// i2c.scan() -> array of the addresses that ACKed
+static int l_i2c_scan(lua_State* L) {
+    i2c_check_active(L);
+    uint8_t found[120];
+    int n = i2c_scan(found, (int)sizeof(found));
+    push_byte_table(L, found, (size_t)n);
     return 1;
 }
 
@@ -814,6 +989,11 @@ static const luaL_Reg sys_lib[] = {
     {"millis", l_millis},
     {"keyPressed", l_key_is_pressed},
     {"getImu", l_get_imu},
+    {"appDir", l_sys_app_dir},
+    {"ntpStart", l_sys_ntp_start},
+    {"ntpSynced", l_sys_ntp_synced},
+    {"epoch", l_sys_epoch},
+    {"time", l_sys_time},
     {NULL, NULL}
 };
 
@@ -856,6 +1036,16 @@ static const luaL_Reg espnow_lib[] = {
 static const luaL_Reg http_lib[] = {
     {"fetch", l_http_fetch},
     {"jsonParse", l_json_parse},
+    {NULL, NULL}
+};
+
+static const luaL_Reg i2c_lib[] = {
+    {"begin", l_i2c_begin},
+    {"close", l_i2c_end},
+    {"write", l_i2c_write},
+    {"read", l_i2c_read},
+    {"writeRead", l_i2c_write_read},
+    {"scan", l_i2c_scan},
     {NULL, NULL}
 };
 
@@ -927,6 +1117,11 @@ void register_espnow_bindings(lua_State* L) {
 void register_http_bindings(lua_State* L) {
     luaL_newlib(L, http_lib);
     lua_setglobal(L, "http");
+}
+
+void register_i2c_bindings(lua_State* L) {
+    luaL_newlib(L, i2c_lib);
+    lua_setglobal(L, "i2c");
 }
 
 void registergfx_bindings(lua_State* L) {

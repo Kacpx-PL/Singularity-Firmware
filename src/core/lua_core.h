@@ -41,6 +41,11 @@ bool lua_core_heap_critical();               // free heap below the kill thresho
 void lua_core_kill_app(const char* reason);  // reset app state now and halt it until ESC
 bool lua_core_app_faulted();
 size_t lua_core_mem_used();                  // bytes currently allocated by the Lua state
+
+// Folder of the app being launched/running (e.g. "/singularity/apps/weather"), no trailing slash.
+// nullptr/"" for built-in apps. Cleared when the app is reset.
+void lua_core_set_app_dir(const char* dir);
+const char* lua_core_get_app_dir();
 LuaConfig lua_core_load_config(const char* script);
 LuaManifest lua_core_load_manifest(const char* script);
 WifiConfig lua_core_load_wifi_config(const char* script);

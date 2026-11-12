@@ -11,4 +11,5 @@ struct App {
     void (*on_loop)(const char* data);
     void (*on_key)(const char* data, char key);
     void (*on_close)(const char* data);
+    const char* dir;   // folder the app lives in (SD apps only, nullptr for built-in apps)
 };

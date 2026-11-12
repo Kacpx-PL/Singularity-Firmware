@@ -64,7 +64,9 @@ static void scan_sd_apps(const char* base_path) {
             const char* name = app_string_storage.back().c_str();
             app_string_storage.emplace_back(full_dir + "/" + m.entry);
             const char* entry_path = app_string_storage.back().c_str();
-            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon), m.priority));
+            app_string_storage.emplace_back(full_dir);
+            const char* app_dir = app_string_storage.back().c_str();
+            apps.push_back(make_lua_app_from_file(name, entry_path, icon_by_name(m.icon), m.priority, app_dir));
         } else if (m.type == "folder") {
             app_string_storage.emplace_back(m.name);
             const char* name = app_string_storage.back().c_str();
@@ -216,6 +218,9 @@ void menu_update(char key) {
                 // SAVE is_folder flag BEFORE calling on_open(),
                 // because on_open() might call rebuild_menu() which clears the apps vector!
                 bool is_folder = apps[selected].is_folder;
+
+                // sys.appDir() must already be valid while the script's top-level code runs
+                lua_core_set_app_dir(apps[selected].dir);
                 
                 apps[selected].on_open(apps[selected].data, apps[selected].name);
                 status_bar_draw();

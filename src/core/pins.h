@@ -13,6 +13,11 @@
 #define SG_PIN_IR_TX    44
 #define SG_PIN_IR_RX     1
 
+// Grove port (HY2.0-4P): G1 = SCL (shared with the IR RX pin above), G2 = SDA.
+// The i2c.* Lua API borrows these two pins and pauses IR receive while it is active.
+#define SG_PIN_GROVE_SCL   1
+#define SG_PIN_GROVE_SDA   2
+
 // Expansion header
 #define SG_PIN_EXT_RESET   3
 #define SG_PIN_EXT_INT     4

@@ -103,3 +103,14 @@ std::string ir_receive_get_protocol() {
 void ir_receive_resume() {
     IrReceiver.resume();
 }
+
+// stop() only halts the 50 us sampling timer; the pin mode is untouched, so after another
+// peripheral (I2C) has used the pin we have to put it back to INPUT before start().
+void ir_receive_suspend() {
+    IrReceiver.stop();
+}
+
+void ir_receive_restore() {
+    pinMode(IR_RX_PIN, INPUT);
+    IrReceiver.start();
+}
