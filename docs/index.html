@@ -3,62 +3,550 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
   <title>Singularity Firmware Web Flasher</title>
-  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
   <style>
+    :root {
+      --bg: #121212;
+      --panel: #1a1a1a;
+      --border: #2e2e2e;
+      --text: #e4e4e4;
+      --muted: #8a8a8a;
+      --accent: #4f8cff;
+      --ok: #5fbf7a;
+      --warn: #d9a53f;
+      --err: #e5675f;
+      --mono: ui-monospace, Consolas, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: system-ui, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
+      margin: 0;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header span { color: var(--muted); }
+
+    main {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+    }
+
+    aside {
+      padding: 16px;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    section h2 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .row { display: flex; gap: 8px; margin-top: 8px; }
+    .row:first-of-type { margin-top: 0; }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      outline: none;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+    button {
+      flex: 1;
+      padding: 8px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { border-color: var(--muted); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover:not(:disabled) { filter: brightness(1.1); border-color: var(--accent); }
+
+    progress {
+      width: 100%;
+      height: 6px;
+      margin-top: 8px;
+      appearance: none;
+      border: none;
+      border-radius: 3px;
+      background: var(--border);
+    }
+    progress::-webkit-progress-bar { background: var(--border); border-radius: 3px; }
+    progress::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
+    progress::-moz-progress-bar { background: var(--accent); border-radius: 3px; }
+
+    .small { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .note { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0; }
+    #unsupported { display: none; color: var(--err); margin: 0; }
+
+    /* Terminal */
+    .terminal {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+    .term-bar {
+      display: flex;
       align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .term-bar div { display: flex; gap: 6px; }
+    .term-bar button { flex: none; padding: 3px 10px; font-size: 12px; }
+
+    #terminal-output {
+      flex: 1;
       margin: 0;
+      padding: 12px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b0b0b;
     }
-    .card {
-      background: #1e293b;
-      padding: 2.5rem;
-      border-radius: 16px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-      width: 100%;
-      max-width: 400px;
-      text-align: center;
+    #terminal-output .info { color: var(--accent); }
+    #terminal-output .ok   { color: var(--ok); }
+    #terminal-output .warn { color: var(--warn); }
+    #terminal-output .err  { color: var(--err); }
+    #terminal-output .dim  { color: var(--muted); }
+
+    #send-form {
+      display: none;
+      gap: 6px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
     }
-    select {
-      width: 100%;
-      padding: 0.75rem;
-      margin: 1rem 0 1.5rem 0;
-      border-radius: 8px;
-      background: #0f172a;
-      color: #f8fafc;
-      border: 1px solid #475569;
-      font-size: 1rem;
+    #send-form.active { display: flex; }
+    #send-form input { font-family: var(--mono); }
+    #send-form button { flex: none; }
+
+    @media (max-width: 760px) {
+      main { grid-template-columns: 1fr; grid-template-rows: auto minmax(240px, 1fr); }
+      aside { border-right: none; border-bottom: 1px solid var(--border); gap: 14px; }
     }
-    p { color: #94a3b8; font-size: 0.95rem; }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <h2>Singularity Flasher</h2>
-    <p>Select a firmware version and connect your device via USB.</p>
+  <header>
+    <h1>Singularity Flasher</h1>
+    <span id="status">Disconnected</span>
+  </header>
 
-    <select id="version-select">
-      <option value="">Loading releases from GitHub...</option>
-    </select>
+  <main>
+    <aside>
+      <p id="unsupported">Web Serial is not available in this browser. Use Chrome, Edge or Opera on desktop.</p>
 
-    <div id="button-container"></div>
-  </div>
+      <section>
+        <h2>Firmware</h2>
+        <select id="version-select" disabled>
+          <option value="">Loading releases from GitHub...</option>
+        </select>
+      </section>
 
-  <script>
+      <section>
+        <h2>Flasher</h2>
+        <div class="row">
+          <button id="btn-connect" disabled>Connect</button>
+          <button id="btn-disconnect" disabled>Disconnect</button>
+        </div>
+        <div class="row">
+          <button id="btn-flash" class="primary" disabled>Flash</button>
+          <button id="btn-erase" disabled>Erase</button>
+        </div>
+        <progress id="progress" value="0" max="100"></progress>
+        <p class="small" id="progress-text">Idle</p>
+      </section>
+
+      <section>
+        <h2>Serial monitor</h2>
+        <div class="row">
+          <button id="btn-monitor" disabled>Start</button>
+        </div>
+        <p class="small">115200 baud. Disconnect the flasher first.</p>
+      </section>
+
+      <p class="note">Remove the SD card before flashing. Hold G0 while plugging in the USB-C cable, then press Connect.</p>
+    </aside>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <span>Output</span>
+        <div>
+          <button id="btn-copy">Copy</button>
+          <button id="btn-clear">Clear</button>
+        </div>
+      </div>
+      <pre id="terminal-output"></pre>
+      <form id="send-form" autocomplete="off">
+        <input type="text" id="send-input" placeholder="Send to device">
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </main>
+
+  <script type="module">
+    import { ESPLoader, Transport } from "https://unpkg.com/esptool-js@0.5.4/bundle.js";
+
     const FIRMWARE_PROXY_URL = 'https://singularity-firmware-proxy.kiszkacper.workers.dev';
+    const FLASH_OFFSET = 0x0;
+    const FLASH_BAUD = 921600;
+    const MONITOR_BAUD = 115200;
+    const MAX_LOG_NODES = 3000;
 
+    const $ = (id) => document.getElementById(id);
+    const selectEl = $('version-select');
+    const btnConnect = $('btn-connect');
+    const btnDisconnect = $('btn-disconnect');
+    const btnFlash = $('btn-flash');
+    const btnErase = $('btn-erase');
+    const btnMonitor = $('btn-monitor');
+    const termEl = $('terminal-output');
+    const statusEl = $('status');
+    const progressEl = $('progress');
+    const progressText = $('progress-text');
+    const sendForm = $('send-form');
+    const sendInput = $('send-input');
+
+    let transport = null;
+    let loader = null;
+    let busy = false;
+    let releasesReady = false;
+    let lastPort = null;
+
+    // serial monitor state
+    let monPort = null;
+    let monReader = null;
+    let monWriter = null;
+    let monLoop = null;
+
+    /* ---------- Terminal ---------- */
+    function append(text, cls) {
+      const span = document.createElement('span');
+      if (cls) span.className = cls;
+      span.textContent = text;
+      termEl.appendChild(span);
+      while (termEl.childNodes.length > MAX_LOG_NODES) termEl.removeChild(termEl.firstChild);
+      termEl.scrollTop = termEl.scrollHeight;
+    }
+    const log = (msg, cls) => append(msg + '\n', cls);
+    const info = (m) => log(m, 'info');
+    const ok   = (m) => log(m, 'ok');
+    const warn = (m) => log(m, 'warn');
+    const fail = (m) => log('Error: ' + m, 'err');
+
+    const espTerminal = {
+      clean() { termEl.textContent = ''; },
+      writeLine(data) { append(data + '\n'); },
+      write(data) { append(data); },
+    };
+
+    $('btn-clear').addEventListener('click', () => { termEl.textContent = ''; });
+    $('btn-copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(termEl.textContent);
+        ok('Log copied');
+      } catch {
+        warn('Could not copy log');
+      }
+    });
+
+    /* ---------- UI state ---------- */
+    function setStatus(text) { statusEl.textContent = text; }
+
+    function setProgress(pct, label) {
+      progressEl.value = pct;
+      if (label) progressText.textContent = label + (pct > 0 && pct < 100 ? ` (${Math.round(pct)}%)` : '');
+    }
+
+    function refreshButtons() {
+      const connected = !!loader;
+      const monitoring = !!monPort;
+      const supported = 'serial' in navigator;
+      selectEl.disabled = busy || !releasesReady;
+      btnConnect.disabled = busy || connected || monitoring || !supported;
+      btnDisconnect.disabled = busy || !connected;
+      btnFlash.disabled = busy || !connected || !selectEl.value || !releasesReady;
+      btnErase.disabled = busy || !connected;
+      btnMonitor.disabled = busy || connected || !supported;
+      btnMonitor.textContent = monitoring ? 'Stop' : 'Start';
+      sendForm.classList.toggle('active', monitoring);
+    }
+
+    function setBusy(value, text) {
+      busy = value;
+      if (value) setStatus(text || 'Working...');
+      else if (loader) setStatus('Connected');
+      else if (monPort) setStatus('Monitoring');
+      else setStatus('Disconnected');
+      refreshButtons();
+    }
+
+    /* ---------- Helpers ---------- */
+    function bufferToBinaryString(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const chunk = 0x8000;
+      let out = '';
+      for (let i = 0; i < bytes.length; i += chunk) {
+        out += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return out;
+    }
+
+    async function closeConnection() {
+      try { if (transport) await transport.disconnect(); } catch { /* already closed */ }
+      transport = null;
+      loader = null;
+    }
+
+    async function downloadFirmware(url) {
+      info('Downloading firmware...');
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Firmware download failed with HTTP ${res.status}`);
+      const buf = await res.arrayBuffer();
+      ok(`Downloaded ${(buf.byteLength / 1024).toFixed(1)} KB`);
+      return buf;
+    }
+
+    /* ---------- Flasher ---------- */
+    async function connect() {
+      let port;
+      try {
+        port = await navigator.serial.requestPort();
+      } catch {
+        warn('No port selected');
+        return;
+      }
+
+      setBusy(true, 'Connecting...');
+      try {
+        transport = new Transport(port, false);
+        loader = new ESPLoader({
+          transport,
+          baudrate: FLASH_BAUD,
+          romBaudrate: 115200,
+          terminal: espTerminal,
+          debugLogging: false,
+        });
+        info('Connecting to device...');
+        const chip = await loader.main();
+        lastPort = port;
+        ok('Connected: ' + chip);
+        if (!/ESP32-S3/i.test(chip)) warn('This does not look like an ESP32-S3.');
+      } catch (err) {
+        fail('Connection failed: ' + (err.message || err));
+        warn('Hold G0 while plugging in the cable and try again.');
+        await closeConnection();
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function disconnect() {
+      setBusy(true, 'Disconnecting...');
+      await closeConnection();
+      info('Disconnected');
+      setProgress(0, 'Idle');
+      setBusy(false);
+    }
+
+    async function flash() {
+      if (!loader || !selectEl.value) return;
+      const label = selectEl.options[selectEl.selectedIndex].textContent;
+      setBusy(true, 'Flashing...');
+      setProgress(0, 'Downloading');
+      try {
+        info('Selected: ' + label);
+        const buf = await downloadFirmware(selectEl.value);
+
+        info(`Writing to flash at 0x${FLASH_OFFSET.toString(16)}...`);
+        setProgress(0, 'Writing');
+        await loader.writeFlash({
+          fileArray: [{ data: bufferToBinaryString(buf), address: FLASH_OFFSET }],
+          flashSize: 'keep',
+          flashMode: 'keep',
+          flashFreq: 'keep',
+          eraseAll: false,
+          compress: true,
+          reportProgress: (_i, written, total) => setProgress((written / total) * 100, 'Writing'),
+        });
+        setProgress(100, 'Done');
+        ok('Flashing finished');
+
+        try {
+          await loader.after('hard_reset');
+          info('Device reset');
+        } catch { /* some USB-CDC setups drop the port on reset */ }
+        await closeConnection();
+        ok('Done. You can start the serial monitor or unplug the device.');
+      } catch (err) {
+        fail('Flash failed: ' + (err.message || err));
+        setProgress(0, 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function eraseFlash() {
+      if (!loader) return;
+      if (!confirm('Erase the entire flash? This removes the current firmware.')) return;
+      setBusy(true, 'Erasing...');
+      setProgress(0, 'Erasing');
+      try {
+        info('Erasing flash, this can take a moment...');
+        await loader.eraseFlash();
+        setProgress(100, 'Erased');
+        ok('Flash erased');
+      } catch (err) {
+        fail('Erase failed: ' + (err.message || err));
+        setProgress(0, 'Failed');
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    /* ---------- Serial monitor ---------- */
+    async function openMonitorPort() {
+      // Reuse the port from the last flash if it is still available
+      if (lastPort) {
+        try {
+          await lastPort.open({ baudRate: MONITOR_BAUD });
+          return lastPort;
+        } catch {
+          lastPort = null;
+        }
+      }
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: MONITOR_BAUD });
+      return port;
+    }
+
+    async function startMonitor() {
+      setBusy(true, 'Opening port...');
+      try {
+        monPort = await openMonitorPort();
+      } catch (err) {
+        monPort = null;
+        if (err && err.name === 'NotFoundError') warn('No port selected');
+        else fail('Could not open port: ' + (err.message || err));
+        setBusy(false);
+        return;
+      }
+
+      lastPort = monPort;
+      monWriter = monPort.writable.getWriter();
+      monReader = monPort.readable.getReader();
+      info(`Serial monitor started at ${MONITOR_BAUD} baud`);
+      setBusy(false);
+
+      const decoder = new TextDecoder();
+      monLoop = (async () => {
+        try {
+          while (true) {
+            const { value, done } = await monReader.read();
+            if (done) break;
+            if (value) {
+              // strip ANSI colour codes
+              append(decoder.decode(value, { stream: true }).replace(/\x1b\[[0-9;]*[A-Za-z]/g, ''));
+            }
+          }
+        } catch (err) {
+          warn('Monitor read ended: ' + (err.message || err));
+        }
+      })();
+    }
+
+    async function stopMonitor() {
+      setBusy(true, 'Stopping...');
+      try { if (monReader) await monReader.cancel(); } catch { /* ignore */ }
+      if (monLoop) await monLoop;
+      try { if (monReader) monReader.releaseLock(); } catch { /* ignore */ }
+      try { if (monWriter) { await monWriter.close(); } } catch { /* ignore */ }
+      try { if (monPort) await monPort.close(); } catch { /* ignore */ }
+      monReader = monWriter = monPort = monLoop = null;
+      log('\nSerial monitor stopped', 'dim');
+      setBusy(false);
+    }
+
+    sendForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!monWriter) return;
+      const text = sendInput.value;
+      sendInput.value = '';
+      try {
+        await monWriter.write(new TextEncoder().encode(text + '\n'));
+      } catch (err) {
+        fail('Send failed: ' + (err.message || err));
+      }
+    });
+
+    /* ---------- Wiring ---------- */
+    btnConnect.addEventListener('click', connect);
+    btnDisconnect.addEventListener('click', disconnect);
+    btnFlash.addEventListener('click', flash);
+    btnErase.addEventListener('click', eraseFlash);
+    btnMonitor.addEventListener('click', () => (monPort ? stopMonitor() : startMonitor()));
+    selectEl.addEventListener('change', refreshButtons);
+
+    if ('serial' in navigator) {
+      navigator.serial.addEventListener('disconnect', async () => {
+        if (loader) {
+          warn('Device unplugged');
+          await closeConnection();
+          setBusy(false);
+        } else if (monPort) {
+          warn('Device unplugged');
+          await stopMonitor();
+        }
+      });
+    } else {
+      $('unsupported').style.display = 'block';
+      fail('Web Serial is not supported in this browser.');
+    }
+
+    /* ---------- Release loading ---------- */
     async function initFlasher() {
-      const selectEl = document.getElementById('version-select');
-      const containerEl = document.getElementById('button-container');
-
       try {
         const response = await fetch(`${FIRMWARE_PROXY_URL}/releases`);
         if (!response.ok) {
@@ -67,7 +555,8 @@
         const releases = await response.json();
 
         if (!Array.isArray(releases) || releases.length === 0) {
-          selectEl.innerHTML = '<option>No firmware releases found</option>';
+          selectEl.innerHTML = '<option value="">No firmware releases found</option>';
+          warn('No firmware releases found');
           return;
         }
 
@@ -86,45 +575,24 @@
         });
 
         if (selectEl.options.length === 0) {
-          selectEl.innerHTML = '<option>No firmware binaries found in releases</option>';
+          selectEl.innerHTML = '<option value="">No firmware binaries found in releases</option>';
+          warn('No firmware binaries found in releases');
           return;
         }
 
-        function updateInstallButton() {
-          const selectedUrl = selectEl.value;
-          containerEl.innerHTML = '';
-
-          const installButton = document.createElement('esp-web-install-button');
-
-          // Build manifest object and wrap it into a Data URI string
-          const manifestObj = {
-            name: "Singularity Firmware",
-            builds: [
-              {
-                chipFamily: "ESP32-S3",
-                parts: [
-                  { path: selectedUrl, offset: 0 }
-                ]
-              }
-            ]
-          };
-
-          const manifestBlob = new Blob([JSON.stringify(manifestObj)],{ type: "application/json" });
-          const manifestUrl = URL.createObjectURL(manifestBlob);
-
-          installButton.setAttribute("manifest", manifestUrl);
-          containerEl.appendChild(installButton);
-        }
-
-        updateInstallButton();
-        selectEl.addEventListener('change', updateInstallButton);
-
+        releasesReady = true;
+        ok(`Found ${selectEl.options.length} firmware release(s)`);
       } catch (error) {
         console.error('Error loading firmware releases:', error);
-        selectEl.innerHTML = '<option>Failed to load firmware releases</option>';
+        selectEl.innerHTML = '<option value="">Failed to load firmware releases</option>';
+        fail('Failed to load releases: ' + (error.message || error));
+      } finally {
+        refreshButtons();
       }
     }
 
+    info('Loading releases...');
+    refreshButtons();
     initFlasher();
   </script>
 
