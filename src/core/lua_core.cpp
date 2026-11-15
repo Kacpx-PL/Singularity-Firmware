@@ -534,6 +534,13 @@ LuaConfig lua_core_load_config(const char* script) {
     }
     lua_pop(L, 1);
 
+    lua_getfield(L, -1, "timezone");
+    if (lua_type(L, -1) == LUA_TSTRING) {
+        cfg.timezone = lua_tostring(L, -1);
+        cfg.has_timezone = true;
+    }
+    lua_pop(L, 1);
+
     lua_pop(L, 1);
     return cfg;
 }

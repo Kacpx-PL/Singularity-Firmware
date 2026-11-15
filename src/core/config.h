@@ -11,3 +11,4 @@ void config_load();
 void config_save();
 void config_set_theme_color(uint16_t color);
 void config_set_boot_delay_ms(uint32_t ms);
+void config_set_timezone(const char* tz); // POSIX TZ string, applies immediately and saves

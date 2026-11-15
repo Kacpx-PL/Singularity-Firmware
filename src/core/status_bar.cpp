@@ -1,6 +1,7 @@
 #include "status_bar.h"
 #include "../modules/wifi/wifi.h"
 #include "../modules/storage/storage_service.h"
+#include "../modules/ntp/ntp_service.h"
 #include "icons.h"
 #include <M5Cardputer.h>
 #include "config.h"
@@ -34,6 +35,16 @@ void status_bar_draw() {
     int textW = M5Cardputer.Display.textWidth(batteryText);
     M5Cardputer.Display.setCursor(M5Cardputer.Display.width() - textW - 5, 6);
     M5Cardputer.Display.print(batteryText);
+
+    // Clock (centered). Time comes from the firmware's NTP service; hidden until the clock is set.
+    struct tm now;
+    if (ntp_get_local_time(&now)) {
+        char clockText[8];
+        snprintf(clockText, sizeof(clockText), "%02d:%02d", now.tm_hour, now.tm_min);
+        int clockW = M5Cardputer.Display.textWidth(clockText);
+        M5Cardputer.Display.setCursor((M5Cardputer.Display.width() - clockW) / 2, 6);
+        M5Cardputer.Display.print(clockText);
+    }
 
     // WiFi icon
     const Icon* icon = &icon_wifi_none;

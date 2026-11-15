@@ -54,23 +54,19 @@ Keys register as **numbers**, not characters compare against the numeric code, e
 
 ### Time (NTP)
 
-The Lua environment has no `os` library, so use these instead.
+The Lua environment has no `os` library, so use these instead. The clock is run by the firmware: it syncs over NTP by itself the first time Wi-Fi connects (and shows in the status bar), so apps only read the time.
 
 ```lua
-sys.ntpStart("CET-1CEST,M3.5.0,M10.5.0/3")   -- optional POSIX timezone string (default "UTC0"), optional NTP server
 sys.ntpSynced()                              -- true once the NTP server has answered
 local t = sys.time()                         -- local time table, or nil if the clock was never set
 local e = sys.epoch()                        -- seconds since 1970 (UTC), or nil if the clock was never set
 ```
 
-- `sys.ntpStart` returns immediately and syncs in the background. Wi-Fi must be connected; if it isn't yet, it keeps retrying. Poll `sys.ntpSynced()` from `update()`.
 - `sys.time()` returns `year, month, day, hour, min, sec, wday, yday`. `wday` is 1 for Sunday.
-- The timezone is a POSIX TZ string, and the sign is inverted from what you'd expect: `"UTC0"` is UTC, `"CET-1CEST,M3.5.0,M10.5.0/3"` is Central Europe with daylight saving, `"EST5EDT,M3.2.0,M11.1.0"` is US Eastern. It stays set after the app closes.
-- `sys.time()` / `sys.epoch()` return nil until the clock holds a date from 2024 or later, so they don't need `ntpSynced()` to be true first.
+- `sys.time()` / `sys.epoch()` return nil until the clock holds a date from 2024 or later, so check for nil (e.g. no Wi-Fi yet on first boot).
+- The timezone is set with `cnfig.setTimezone(tz)`, which persists to `config.lua` (default `"UTC0"`). It takes a POSIX TZ string, and the sign is inverted from what you'd expect: `"UTC0"` is UTC, `"CET-1CEST,M3.5.0,M10.5.0/3"` is Central Europe with daylight saving, `"EST5EDT,M3.2.0,M11.1.0"` is US Eastern.
 
 ```lua
-sys.ntpStart("CET-1CEST,M3.5.0,M10.5.0/3")
-
 function update()
     local t = sys.time()
     if t then
@@ -329,6 +325,7 @@ Navigation is constrained to the given root path — `..` appears when inside a 
 ```lua
 cnfig.setThemeColor(0x07E0)   -- applies immediately and persists to config.lua
 cnfig.setBootDelay(3000)      -- clamped to 1000–10000ms internally
+cnfig.setTimezone("CET-1CEST,M3.5.0,M10.5.0/3")   -- POSIX TZ string for the status bar clock and sys.time(), persists
 ```
 
 ### Misc

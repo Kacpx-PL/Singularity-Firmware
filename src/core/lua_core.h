@@ -26,6 +26,8 @@ struct LuaConfig {
     uint32_t theme_color;
     bool has_boot_delay_ms;
     uint32_t boot_delay_ms;
+    bool has_timezone;
+    std::string timezone;
 };
 
 void lua_core_init();

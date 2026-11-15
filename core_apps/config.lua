@@ -1,7 +1,7 @@
 -- Ensure default config file exists
 local CONFIG_PATH = "/singularity/system/config.lua"
 if not storage_exists(CONFIG_PATH) then
-    local default_config = "return {\n    theme_color = 2016,\n    boot_delay_ms = 3000,\n}\n"
+    local default_config = "return {\n    theme_color = 2016,\n    boot_delay_ms = 3000,\n    timezone = \"UTC0\",\n}\n"
     storage_write(CONFIG_PATH, default_config)
 end
 
@@ -13,6 +13,7 @@ function refresh_list()
     gfx.listClr()
     gfx.listAddItem("Set Theme Color (hex)")
     gfx.listAddItem("Set Boot Time (ms)")
+    gfx.listAddItem("Set Timezone")
 end
 
 gfx.clearScreen()
@@ -45,6 +46,41 @@ local function hex_to_rgb565(hex)
     return (r5 << 11) | (g6 << 5) | b5
 end
 
+-- Timezones are POSIX TZ strings (note the inverted sign: UTC+1 is "-1").
+-- Anything not listed here can be entered with "Custom".
+local TIMEZONES = {
+    {"UTC",                      "UTC0"},
+    {"London",                   "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"Central Europe (CET)",     "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"Eastern Europe (EET)",     "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+    {"US Eastern",               "EST5EDT,M3.2.0,M11.1.0"},
+    {"US Central",               "CST6CDT,M3.2.0,M11.1.0"},
+    {"US Mountain",              "MST7MDT,M3.2.0,M11.1.0"},
+    {"US Pacific",               "PST8PDT,M3.2.0,M11.1.0"},
+    {"Japan",                    "JST-9"},
+    {"Sydney",                   "AEST-10AEDT,M10.1.0,M4.1.0/3"},
+}
+local SG_TIMEZONE_MAX_LEN = 47
+
+local function show_main_list()
+    gfx.clearScreen()
+    gfx.drawText("System Settings", 10, 40, 2)
+    refresh_list()
+    gfx.listDraw()
+end
+
+local function show_tz_list()
+    gfx.listClr()
+    gfx.listAddItem("< Back")
+    for _, tz in ipairs(TIMEZONES) do
+        gfx.listAddItem(tz[1])
+    end
+    gfx.listAddItem("Custom (POSIX TZ)")
+    gfx.clearScreen()
+    gfx.drawText("Timezone", 10, 40, 2)
+    gfx.listDraw()
+end
+
 function on_key(key)
     if mode == "list" then
         local result = gfx.listHandleKey(key)
@@ -63,6 +99,10 @@ function on_key(key)
             gfx.clearScreen()
             gfx.textInputStart("Boot Time (e.g. 3000):", false)
             gfx.textInputDraw()
+
+        elseif result == 2 then
+            mode = "tz_list"
+            show_tz_list()
         end
 
     elseif mode == "gfx.setColor" then
@@ -120,6 +160,58 @@ function on_key(key)
                 end
 
                 mode = "list"
+            end
+        end
+
+    elseif mode == "tz_list" then
+        local result = gfx.listHandleKey(key)
+        gfx.clearScreen()
+        gfx.drawText("Timezone", 10, 40, 2)
+        gfx.listDraw()
+
+        if result == 0 then
+            mode = "list"
+            show_main_list()
+
+        elseif result >= 1 and result <= #TIMEZONES then
+            local tz = TIMEZONES[result]
+            cnfig.setTimezone(tz[2])
+            gfx.clearScreen()
+            gfx.drawText("Timezone updated!", 10, 30, 2)
+            gfx.drawText(tz[1], 10, 55, 1)
+            mode = "list"
+            refresh_list()   -- list widget still holds the timezones; restore the main items
+
+        elseif result == #TIMEZONES + 1 then
+            mode = "tz_custom"
+            gfx.clearScreen()
+            gfx.textInputStart("POSIX TZ string:", false)
+            gfx.textInputDraw()
+        end
+
+    elseif mode == "tz_custom" then
+        local r = gfx.textInputHandleKey(key)
+
+        if r == 2 then
+            -- cancelled (backspace on empty): back to the timezone list
+            mode = "tz_list"
+            show_tz_list()
+        else
+            gfx.textInputDraw()
+            if r == 1 then
+                local value = gfx.textInputGetVal()
+
+                gfx.clearScreen()
+                if #value < 1 or #value > SG_TIMEZONE_MAX_LEN then
+                    gfx.drawText("Invalid timezone!", 10, 40, 1)
+                else
+                    cnfig.setTimezone(value)
+                    gfx.drawText("Timezone updated!", 10, 30, 2)
+                    gfx.drawText(value, 10, 55, 1)
+                end
+
+                mode = "list"
+                refresh_list()   -- list widget still holds the timezones; restore the main items
             end
         end
     end

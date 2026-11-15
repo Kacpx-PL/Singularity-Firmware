@@ -12,6 +12,7 @@
 #include "../core_apps/generated/core_apps_bundle.h"
 #include "../modules/storage/storage_service.h"
 #include "../modules/wifi/wifi.h"
+#include "../modules/ntp/ntp_service.h"
 #include "config.h"
 
 static std::vector<std::string> path_stack = { SG_APPS_DIR };
@@ -195,6 +196,7 @@ void menu_init() {
 void menu_update(char key) {
 
     wifi_tick();
+    ntp_tick();   // starts the clock sync the first time Wi-Fi is up
     
     if (millis() - last_status_refresh > 1250) {
         status_bar_draw();

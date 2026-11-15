@@ -46,6 +46,17 @@ static int l_config_set_boot_delay(lua_State* L) {
     return 0;
 }
 
+// cnfig.setTimezone("CET-1CEST,M3.5.0,M10.5.0/3") - POSIX TZ string, persists to config.lua
+static int l_config_set_timezone(lua_State* L) {
+    const char* tz = luaL_checkstring(L, 1);
+    size_t len = strlen(tz);
+    if (len == 0 || len > 47) {
+        return luaL_argerror(L, 1, "timezone must be a POSIX TZ string of 1..47 characters");
+    }
+    config_set_timezone(tz);
+    return 0;
+}
+
 static int l_gpio_write(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int value = luaL_checkinteger(L, 2);
@@ -201,14 +212,7 @@ static int l_sys_app_dir(lua_State* L) {
     return 1;
 }
 
-// sys.ntpStart([tz], [server]) - non-blocking, see ntp_service.h
-static int l_sys_ntp_start(lua_State* L) {
-    const char* tz = luaL_optstring(L, 1, "UTC0");
-    const char* server = luaL_optstring(L, 2, "pool.ntp.org");
-    ntp_start(tz, server);
-    return 0;
-}
-
+// NTP is owned by the firmware (see ntp_service.h); apps only read the time.
 static int l_sys_ntp_synced(lua_State* L) {
     lua_pushboolean(L, ntp_synced());
     return 1;
@@ -229,16 +233,14 @@ static void set_int_field(lua_State* L, const char* key, int value) {
     lua_setfield(L, -2, key);
 }
 
-// sys.time() -> {year, month, day, hour, min, sec, wday, yday} in the timezone given to
-// ntpStart (UTC by default); wday 1 = Sunday (same as Lua's os.date "*t"). nil if never set.
+// sys.time() -> {year, month, day, hour, min, sec, wday, yday} in the timezone set with
+// cnfig.setTimezone (UTC by default); wday 1 = Sunday (same as Lua's os.date "*t"). nil if never set.
 static int l_sys_time(lua_State* L) {
-    if (!ntp_time_valid()) {
+    struct tm t;
+    if (!ntp_get_local_time(&t)) {
         lua_pushnil(L);
         return 1;
     }
-    time_t now = time(nullptr);
-    struct tm t;
-    localtime_r(&now, &t);
 
     lua_createtable(L, 0, 8);
     set_int_field(L, "year", t.tm_year + 1900);
@@ -963,6 +965,7 @@ static int l_json_parse(lua_State* L) {
 static const luaL_Reg cnfig_lib[] = {
     {"setThemeColor", l_config_set_theme_color},
     {"setBootDelay", l_config_set_boot_delay},
+    {"setTimezone", l_config_set_timezone},
     {NULL, NULL}
 };
 
@@ -990,7 +993,6 @@ static const luaL_Reg sys_lib[] = {
     {"keyPressed", l_key_is_pressed},
     {"getImu", l_get_imu},
     {"appDir", l_sys_app_dir},
-    {"ntpStart", l_sys_ntp_start},
     {"ntpSynced", l_sys_ntp_synced},
     {"epoch", l_sys_epoch},
     {"time", l_sys_time},
