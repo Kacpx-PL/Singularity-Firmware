@@ -6,6 +6,7 @@
 
 extern uint16_t THEME_COLOR;
 extern uint32_t BOOT_DELAY_MS;
+extern uint8_t VOLUME_LEVEL;   // global volume step; owned by sound_service, saved via config_save()
 
 void config_load();
 void config_save();

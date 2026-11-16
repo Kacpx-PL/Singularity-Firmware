@@ -28,6 +28,8 @@ struct LuaConfig {
     uint32_t boot_delay_ms;
     bool has_timezone;
     std::string timezone;
+    bool has_volume;
+    uint32_t volume;
 };
 
 void lua_core_init();

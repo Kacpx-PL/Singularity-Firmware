@@ -13,6 +13,7 @@ void register_ble_bindings(lua_State* L);
 void register_espnow_bindings(lua_State* L);
 void register_http_bindings(lua_State* L);
 void register_i2c_bindings(lua_State* L);
+void register_sound_bindings(lua_State* L);
 void registergfx_bindings(lua_State* L);
 
 void register_storage_bindings(lua_State* L); // in lua_core.cpp

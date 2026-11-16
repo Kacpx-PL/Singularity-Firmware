@@ -2,11 +2,16 @@
 #include "../modules/wifi/wifi.h"
 #include "../modules/storage/storage_service.h"
 #include "../modules/ntp/ntp_service.h"
+#include "../modules/sound/sound_service.h"
 #include "icons.h"
 #include <M5Cardputer.h>
 #include "config.h"
 
 const int STATUS_BAR_HEIGHT = 20;
+
+static const unsigned long VOLUME_POPUP_MS = 1500;
+static bool g_volume_popup = false;
+static unsigned long g_volume_popup_until = 0;
 
 static void draw_icon(int x, int y, const Icon& icon, uint16_t color) {
     M5Canvas canvas(&M5Cardputer.Display);
@@ -20,9 +25,41 @@ static void draw_icon(int x, int y, const Icon& icon, uint16_t color) {
     canvas.deleteSprite();
 }
 
+// Volume view: "Vol" + 10 segments + number (or MUTE). Replaces the normal content while shown.
+static void draw_volume_popup() {
+    const int level = sound_get_level();
+    const int segs = SG_VOLUME_MAX_LEVEL;
+
+    M5Cardputer.Display.setTextSize(1);
+    M5Cardputer.Display.setTextColor(WHITE);
+    M5Cardputer.Display.setCursor(8, 6);
+    M5Cardputer.Display.print("Vol");
+
+    for (int i = 0; i < segs; i++) {
+        int x = 40 + i * 16;
+        if (i < level) {
+            M5Cardputer.Display.fillRect(x, 6, 13, 8, THEME_COLOR);
+        } else {
+            M5Cardputer.Display.drawRect(x, 6, 13, 8, THEME_COLOR);
+        }
+    }
+
+    char label[8];
+    if (level == 0) snprintf(label, sizeof(label), "MUTE");
+    else snprintf(label, sizeof(label), "%d", level);
+    int w = M5Cardputer.Display.textWidth(label);
+    M5Cardputer.Display.setCursor(M5Cardputer.Display.width() - w - 5, 6);
+    M5Cardputer.Display.print(label);
+}
+
 void status_bar_draw() {
     M5Cardputer.Display.drawRect(0, 0, M5Cardputer.Display.width(), STATUS_BAR_HEIGHT, THEME_COLOR);
     M5Cardputer.Display.fillRect(1, 1, M5Cardputer.Display.width() - 2, STATUS_BAR_HEIGHT - 2, BLACK);
+
+    if (g_volume_popup) {
+        draw_volume_popup();
+        return;
+    }
     
     // Battery percentage
     int battery = M5Cardputer.Power.getBatteryLevel();
@@ -62,5 +99,19 @@ void status_bar_draw() {
     // SD Card icon (only show if detected)
     if (storage_is_ready()) {
         draw_icon(25, 2, icon_msdicon, THEME_COLOR);
+    }
+}
+
+void status_bar_show_volume() {
+    g_volume_popup = true;
+    g_volume_popup_until = millis() + VOLUME_POPUP_MS;
+    status_bar_draw();
+}
+
+void status_bar_tick() {
+    // (long) cast keeps this correct when millis() wraps
+    if (g_volume_popup && (long)(millis() - g_volume_popup_until) >= 0) {
+        g_volume_popup = false;
+        status_bar_draw();
     }
 }

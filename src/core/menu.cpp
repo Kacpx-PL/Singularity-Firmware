@@ -13,6 +13,8 @@
 #include "../modules/storage/storage_service.h"
 #include "../modules/wifi/wifi.h"
 #include "../modules/ntp/ntp_service.h"
+#include "../modules/sound/sound_service.h"
+#include "input.h"
 #include "config.h"
 
 static std::vector<std::string> path_stack = { SG_APPS_DIR };
@@ -197,6 +199,15 @@ void menu_update(char key) {
 
     wifi_tick();
     ntp_tick();   // starts the clock sync the first time Wi-Fi is up
+    sound_tick(); // saves the volume once it has stopped changing
+    status_bar_tick();
+
+    // Global volume (Fn + - / Fn + =) is system-owned: handled here, never passed to the menu or apps.
+    if (key == SG_KEY_VOL_UP || key == SG_KEY_VOL_DOWN) {
+        sound_change_volume(key == SG_KEY_VOL_UP ? 1 : -1);
+        status_bar_show_volume();
+        key = 0;
+    }
     
     if (millis() - last_status_refresh > 1250) {
         status_bar_draw();

@@ -1,7 +1,7 @@
 -- Ensure default config file exists
 local CONFIG_PATH = "/singularity/system/config.lua"
 if not storage_exists(CONFIG_PATH) then
-    local default_config = "return {\n    theme_color = 2016,\n    boot_delay_ms = 3000,\n    timezone = \"UTC0\",\n}\n"
+    local default_config = "return {\n    theme_color = 2016,\n    boot_delay_ms = 3000,\n    volume = 5,\n    timezone = \"UTC0\",\n}\n"
     storage_write(CONFIG_PATH, default_config)
 end
 

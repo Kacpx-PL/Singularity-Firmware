@@ -32,6 +32,13 @@ char input_read() {
         return '\n';
     }
 
+    // Volume: Fn + - / Fn + =  (the + sign lives on the = key, so accept both)
+    if (status.fn && !status.word.empty()) {
+        char c = status.word[0];
+        if (c == '=' || c == '+') return SG_KEY_VOL_UP;
+        if (c == '-' || c == '_') return SG_KEY_VOL_DOWN;
+    }
+
     // Normal printable key
     if (status.word.empty()) {
         return 0;

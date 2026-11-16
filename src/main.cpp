@@ -12,6 +12,7 @@
 #include "core/config.h"
 #include "modules/ir/ir_service.h"
 #include "modules/espnow/espnow_service.h"
+#include "modules/sound/sound_service.h"
 
 // Loads /singularity/system/wifi_networks.lua.
 // - The buffer is sized to the file (a fixed 1 KB buffer used to truncate files with
@@ -83,6 +84,8 @@ void setup() {
     }
 
     config_load();
+
+    sound_init();   // apply the saved global volume to the speaker
 
     ir_init();
 

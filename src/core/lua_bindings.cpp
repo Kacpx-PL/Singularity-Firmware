@@ -13,6 +13,7 @@
 #include "../modules/ui/ui_file_browser.h"
 #include "../modules/http/http_service.h"
 #include "../modules/i2c/i2c_service.h"
+#include "../modules/sound/sound_service.h"
 #include "../modules/ntp/ntp_service.h"
 
 extern "C" {
@@ -1041,6 +1042,49 @@ static const luaL_Reg http_lib[] = {
     {NULL, NULL}
 };
 
+// -----Sound Bindings-------
+
+// snd.tone(freq_hz, duration_ms, [volume]) -> bool
+// volume is 0.0..1.0 (default 1.0) and scales inside the user's global volume.
+// Returns false if the user has the device muted. A new tone replaces the previous one.
+static int l_snd_tone(lua_State* L) {
+    lua_Number freq = luaL_checknumber(L, 1);
+    lua_Integer ms = luaL_checkinteger(L, 2);
+    lua_Number vol = luaL_optnumber(L, 3, 1.0);
+
+    if (freq < 20) freq = 20;
+    if (freq > 10000) freq = 10000;
+    if (ms < 1) ms = 1;
+    if (ms > 60000) ms = 60000;
+
+    lua_pushboolean(L, sound_app_tone((float)freq, (uint32_t)ms, (float)vol));
+    return 1;
+}
+
+static int l_snd_stop(lua_State* L) {
+    sound_stop();
+    return 0;
+}
+
+static int l_snd_is_playing(lua_State* L) {
+    lua_pushboolean(L, sound_app_is_playing());
+    return 1;
+}
+
+// snd.volume() -> the user's global volume, 0 (muted) .. 10. Read-only.
+static int l_snd_volume(lua_State* L) {
+    lua_pushinteger(L, sound_get_level());
+    return 1;
+}
+
+static const luaL_Reg snd_lib[] = {
+    {"tone", l_snd_tone},
+    {"stop", l_snd_stop},
+    {"isPlaying", l_snd_is_playing},
+    {"volume", l_snd_volume},
+    {NULL, NULL}
+};
+
 static const luaL_Reg i2c_lib[] = {
     {"begin", l_i2c_begin},
     {"close", l_i2c_end},
@@ -1124,6 +1168,11 @@ void register_http_bindings(lua_State* L) {
 void register_i2c_bindings(lua_State* L) {
     luaL_newlib(L, i2c_lib);
     lua_setglobal(L, "i2c");
+}
+
+void register_sound_bindings(lua_State* L) {
+    luaL_newlib(L, snd_lib);
+    lua_setglobal(L, "snd");
 }
 
 void registergfx_bindings(lua_State* L) {

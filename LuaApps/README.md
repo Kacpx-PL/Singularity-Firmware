@@ -6,7 +6,7 @@ For file structure see `sd_files`.
 
 # Lua API Reference
 
-Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `espnow`, `http`, `ir`, `i2c`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
+Every app has access to these global namespaces (`gfx`, `wifi`, `ble`, `espnow`, `http`, `ir`, `i2c`, `snd`, `sys`, `gpio`, `cnfig`). No `require`/`import` needed — they are all registered directly into the Lua environment at startup.
 
 ## App Lifecycle
 
@@ -244,6 +244,24 @@ gpio.write(pin, value)
 gpio.read(pin)
 ```
 Reserved pins (SD card, IR LED/receiver, display, USB, audio, keyboard interrupt, flash and the EXT header) and pins that don't exist on the ESP32-S3 will raise a Lua error if accessed — see `src/core/pins.h` for the full list.
+
+### Sound
+
+Tones only for now (the speaker is small, so beeps and short jingles are what it does best).
+
+```lua
+snd.tone(880, 150)          -- frequency in Hz (20..10000), duration in ms (1..60000)
+snd.tone(440, 300, 0.5)     -- optional app volume 0.0..1.0 (default 1.0)
+snd.stop()                  -- cut the current tone
+snd.isPlaying()             -- true while a tone is playing
+snd.volume()                -- the user's global volume: 0 (muted) .. 10. Read-only
+```
+
+- **Two volumes.** The user controls the *global* volume with **Fn + -** / **Fn + =** (a volume bar appears in the status bar for about a second; the setting is saved). The app volume you pass to `snd.tone` scales *within* that, so an app can be quieter than the user's setting but never louder. Apps can't change the global volume.
+- Both volumes use a perceptual (roughly logarithmic) curve, so `0.5` sounds about half as loud and each volume step feels similar. Don't compensate for it yourself.
+- When the user has muted the device, `snd.tone` plays nothing and returns `false`. Check `snd.volume() == 0` if your app wants to skip sound effects entirely.
+- A new tone replaces the one that is still playing (like Arduino's `tone()`). For a melody, start the next note from `update()` once `snd.isPlaying()` is false.
+- Sound stops by itself when the app closes.
 
 ### I2C
 

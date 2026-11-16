@@ -4,6 +4,7 @@
 #include "../modules/wifi/wifi.h"
 #include "../modules/http/http_service.h"
 #include "../modules/i2c/i2c_service.h"
+#include "../modules/sound/sound_service.h"
 
 extern "C" {
     #include "lua.h"
@@ -213,6 +214,7 @@ void lua_core_init() {
     register_espnow_bindings(L);
     register_http_bindings(L);
     register_i2c_bindings(L);
+    register_sound_bindings(L);
     registergfx_bindings(L);
 
     register_storage_bindings(L); // defined here
@@ -248,6 +250,7 @@ void lua_core_reset_app() {
     ble_scan_cancel();
     http_cleanup();
     i2c_end();            // give the Grove port back (and re-enable IR receive)
+    sound_stop();         // an app must never leave a tone playing
     g_app_dir.clear();
     if (L) {
         lua_pushglobaltable(L);
@@ -538,6 +541,14 @@ LuaConfig lua_core_load_config(const char* script) {
     if (lua_type(L, -1) == LUA_TSTRING) {
         cfg.timezone = lua_tostring(L, -1);
         cfg.has_timezone = true;
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, -1, "volume");
+    if (lua_isnumber(L, -1)) {
+        lua_Integer v = lua_tointeger(L, -1);
+        cfg.volume = (v < 0) ? 0 : (uint32_t)v;
+        cfg.has_volume = true;
     }
     lua_pop(L, 1);
 
