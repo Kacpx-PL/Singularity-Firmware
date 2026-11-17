@@ -13,6 +13,7 @@
 #include "modules/ir/ir_service.h"
 #include "modules/espnow/espnow_service.h"
 #include "modules/sound/sound_service.h"
+#include "modules/spi_bus/spi_bus.h"
 
 // Loads /singularity/system/wifi_networks.lua.
 // - The buffer is sized to the file (a fixed 1 KB buffer used to truncate files with
@@ -67,6 +68,7 @@ void setup() {
     auto cfg = M5.config();
     M5Cardputer.begin(cfg);
 
+    spi_bus_early_init();   // cap CS pins high before the SD card starts talking
     bool sd_ok = storage_init();
     if (!sd_ok) {
         Serial.println("SD card init failed - continuing without SD");
@@ -76,6 +78,8 @@ void setup() {
             Serial.println("SD card filesystem timeout");
         }
     }
+
+    spi_bus_detect_cap();   // SPI is up and the SD card is idle: look for the CC1101 cap
 
     lua_core_init();
 

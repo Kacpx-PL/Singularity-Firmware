@@ -1,6 +1,6 @@
 return {
     type = "app",
-    name = "Jingle",
+    name = "SoundTest",
     icon = "icon_cog",
     entry = "main.lua"
 }

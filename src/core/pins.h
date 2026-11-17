@@ -31,6 +31,23 @@
 #define SG_PIN_EXT_TX     13
 #define SG_PIN_EXT_RX     15
 
+// CC1101 + NFC cap (Cardputer-Adv expansion header). It shares SCK/MISO/MOSI with the SD card
+// (40/39/14) and only has its own chip selects. Aliases of the EXT pins above, which are already
+// reserved, so Lua apps can't touch them. See modules/spi_bus/spi_bus.h.
+#define SG_PIN_CC_CS       SG_PIN_EXT_BUSY   // 6
+#define SG_PIN_NFC_CS      SG_PIN_EXT_CS     // 5
+#define SG_PIN_NFC_IRQ     SG_PIN_EXT_INT    // 4
+#define SG_PIN_CAP_RST     SG_PIN_EXT_RESET  // 3
+#define SG_PIN_CC_GDO0     SG_PIN_EXT_RX     // 15
+#define SG_PIN_CC_RF_SW0   SG_PIN_EXT_TX     // 13
+
+// LoRa cap (SX1262) uses the same header pins. WARNING: G6 is the chip's BUSY *output* there but
+// the CC1101 cap's chip select, so never drive G6 until the cap type is known.
+#define SG_PIN_LORA_NSS    SG_PIN_EXT_CS     // 5
+#define SG_PIN_LORA_BUSY   SG_PIN_EXT_BUSY   // 6
+#define SG_PIN_LORA_DIO1   SG_PIN_EXT_INT    // 4
+#define SG_PIN_LORA_RST    SG_PIN_EXT_RESET  // 3
+
 // Keyboard controller (TCA8418) interrupt line; its I2C bus is SDA 8 / SCL 9 (see above)
 #define SG_PIN_KB_INT     11
 

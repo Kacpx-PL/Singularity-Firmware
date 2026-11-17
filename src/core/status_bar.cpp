@@ -3,6 +3,7 @@
 #include "../modules/storage/storage_service.h"
 #include "../modules/ntp/ntp_service.h"
 #include "../modules/sound/sound_service.h"
+#include "../modules/spi_bus/spi_bus.h"
 #include "icons.h"
 #include <M5Cardputer.h>
 #include "config.h"
@@ -99,6 +100,11 @@ void status_bar_draw() {
     // SD Card icon (only show if detected)
     if (storage_is_ready()) {
         draw_icon(25, 2, icon_msdicon, THEME_COLOR);
+    }
+
+    // Cap icon (CC1101/NFC or LoRa cap, detected once at boot)
+    if (spi_bus_cap_present()) {
+        draw_icon(45, 2, icon_module, THEME_COLOR);
     }
 }
 

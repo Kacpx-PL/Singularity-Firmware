@@ -19,6 +19,7 @@ extern const Icon icon_wifi_strong;
 extern const Icon icon_globe;
 extern const Icon icon_cog;
 extern const Icon icon_msdicon;
+extern const Icon icon_module;
 extern const Icon icon_iricon;
 extern const Icon icon_command;
 extern const Icon icon_code;

@@ -1,6 +1,7 @@
 #include "storage_service.h"
 #include <SD.h>
 #include <SPI.h>
+#include "../spi_bus/spi_bus.h"
 
 bool storage_init() {
     SPI.begin(SD_SPI_SCK_PIN, SD_SPI_MISO_PIN, SD_SPI_MOSI_PIN, SD_SPI_CS_PIN);
@@ -14,13 +15,19 @@ bool storage_init() {
 }
 
 bool storage_is_ready() {
+    SpiBusGuard bus;
     return SD.cardSize() > 0;
 }
 
 bool storage_wait_ready(unsigned long timeout_ms) {
     unsigned long start = millis();
     while (millis() - start < timeout_ms) {
-        if (SD.cardSize() > 0 && SD.exists("/")) {
+        bool ready;
+        {
+            SpiBusGuard bus;   // scoped so the bus isn't held during the delays below
+            ready = SD.cardSize() > 0 && SD.exists("/");
+        }
+        if (ready) {
             delay(50);  // Small delay to ensure filesystem is fully ready
             return true;
         }
@@ -30,10 +37,12 @@ bool storage_wait_ready(unsigned long timeout_ms) {
 }
 
 bool storage_exists(const char* path) {
+    SpiBusGuard bus;
     return SD.exists(path);
 }
 
 bool storage_read(const char* path, char* buf, size_t maxlen) {
+    SpiBusGuard bus;
     File f = SD.open(path, FILE_READ);
     if (!f) return false;
 
@@ -45,6 +54,7 @@ bool storage_read(const char* path, char* buf, size_t maxlen) {
 }
 
 bool storage_ensure_dir(const char* path) {
+    SpiBusGuard bus;   // recursive lock, storage_write() holds it already
     // Recursively create directories if they don't exist, INCLUDING the last component.
     // (The old loop only created everything up to the last '/', so "/a/b" created "/a"
     // but never "/a/b", and writes into a missing folder failed silently.)
@@ -86,6 +96,7 @@ std::string storage_escape_lua_string(const std::string& input) {
 }
 
 bool storage_write(const char* path, const char* data) {
+    SpiBusGuard bus;   // held for the whole write so a radio transfer can't land in the middle of it
     // Ensure parent directory exists
     std::string pathStr(path);
     size_t lastSlash = pathStr.find_last_of('/');
@@ -114,6 +125,7 @@ bool storage_write(const char* path, const char* data) {
 }
 
 std::vector<std::string> storage_list_files(const char* dir, const char* extension) {
+    SpiBusGuard bus;
     std::vector<std::string> results;
 
     File root = SD.open(dir);
@@ -140,6 +152,7 @@ std::vector<std::string> storage_list_files(const char* dir, const char* extensi
 }
 
 std::vector<std::string> storage_list_dirs(const char* dir) {
+    SpiBusGuard bus;
     std::vector<std::string> results;
 
     File root = SD.open(dir);
@@ -161,6 +174,7 @@ std::vector<std::string> storage_list_dirs(const char* dir) {
 }
 
 std::vector<DirEntry> storage_list_dir_entries(const char* dir) {
+    SpiBusGuard bus;
     std::vector<DirEntry> results;
 
     File root = SD.open(dir);
@@ -178,6 +192,7 @@ std::vector<DirEntry> storage_list_dir_entries(const char* dir) {
 }
 
 size_t storage_get_file_size(const char* path) {
+    SpiBusGuard bus;
     File f = SD.open(path, FILE_READ);
     if (!f) return 0;
     size_t size = f.size();
